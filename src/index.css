@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  --color-[#09090b]: #121212;
+  --color-[#0c0c0e]: #1a1a1c;
+  --color-[#07070a]: #121212;
+  --color-[#070709]: #121212;
+  --color-[#0b0b0d]: #1a1a1c;
+  
+  /* Overwrite zinc shades for comfortable, premium eye-friendly charcoal dark surfaces */
+  --color-zinc-950: #121212;
+  --color-zinc-900: #1a1a1c;
+  --color-zinc-850: #242427;
+  --color-zinc-800: #2d2d31;
+  --color-zinc-700: #3f3f46;
+  
+  /* Overwrite neutral shades for perfect consistency across UI files */
+  --color-neutral-950: #121212;
+  --color-neutral-900: #1a1a1c;
+  --color-neutral-850: #242427;
+  --color-neutral-800: #2d2d31;
+  --color-neutral-700: #3f3f46;
+
+  /* Standardized high-contrast, beautiful borders for eye-friendly light and dark contexts */
+  --color-zinc-200: #dbdbdf;
+  --color-neutral-200: #dbdbdf;
+  --color-border-zinc-850: #242427;
+  --color-border-zinc-808: #2d2d31;
+  --color-border-zinc-805: #2d2d31;
+
+  /* Deep slate scrollbar and guide brand colors to cohesive slate & emerald-mint configurations */
+  --color-brand-primary: #10b981;
+  --color-brand-hover: #34d399;
+  
+  /* Font Families configuration */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom backgrounds and smooth transition behavior */
+html, body {
+  font-family: var(--font-sans);
+  transition: background-color 200ms ease, color 200ms ease;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Hide scrollbars globally for Chrome, Safari and Opera */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+html {
+  background-color: #f9f9f9;
+  color: #181c20;
+}
+
+html.dark {
+  background-color: #121212;
+  color: #f6f6f7;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+  100% { transform: scale(0.95); opacity: 0.5; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-ring {
+  animation: ripple 2s infinite ease-in-out;
+}
+

@@ -1,0 +1,1559 @@
+import React from 'react';
+import { 
+  ClassSession, 
+  AppNotification, 
+  UserProfile, 
+  AccessibilityConfig,
+  Enrollment,
+  AttendanceRecord,
+  FacultyStatus,
+  Announcement
+} from '../types';
+import { 
+  Plus, 
+  QrCode, 
+  Clock, 
+  MapPin, 
+  Edit2, 
+  Trash2, 
+  Save, 
+  X, 
+  CheckCircle, 
+  Users, 
+  Check, 
+  AlertCircle,
+  Calendar,
+  Layers,
+  Sparkles,
+  Camera,
+  UploadCloud,
+  TrendingUp,
+  UserCheck,
+  MessageSquare
+} from 'lucide-react';
+import { speakText } from './AccessibilitySettings';
+import AlarmClock from './AlarmClock';
+import SubjectDetailModal from './SubjectDetailModal';
+import Messages from './Messages';
+
+interface DashboardFacultyProps {
+  activeScreen: string;
+  setScreen: (screen: string) => void;
+  classes: ClassSession[];
+  onAddClass: (newClass: Omit<ClassSession, 'id'>) => void;
+  onEditClass: (updatedClass: ClassSession) => void;
+  onDeleteClass: (classId: string) => void;
+  userProfile: UserProfile;
+  facultyStatus: 'available' | 'in-class' | 'unavailable';
+  onChangeFacultyStatus: (status: 'available' | 'in-class' | 'unavailable') => void;
+  accessibility: AccessibilityConfig;
+  enrollments: Enrollment[];
+  attendanceRecords: AttendanceRecord[];
+  notifications: AppNotification[];
+  facultyStatuses: FacultyStatus[];
+  onUpdateProfile: (updated: UserProfile) => void;
+  announcements?: Announcement[];
+}
+
+export default function DashboardFaculty({
+  activeScreen,
+  setScreen,
+  classes,
+  onAddClass,
+  onEditClass,
+  onDeleteClass,
+  userProfile,
+  facultyStatus,
+  onChangeFacultyStatus,
+  accessibility,
+  enrollments,
+  attendanceRecords,
+  notifications,
+  facultyStatuses,
+  onUpdateProfile,
+  announcements = []
+}: DashboardFacultyProps) {
+  
+  // Timer for QR code attendance simulation
+  const [timeLeft, setTimeLeft] = React.useState(300); // 5 minutes standard
+  const [activeQRClass, setActiveQRClass] = React.useState<string>(classes[0]?.id || '');
+  const [qrToken, setQrToken] = React.useState('QR_KEY_' + Math.random().toString(36).substring(4, 10).toUpperCase());
+  const [qrIntervalId, setQrIntervalId] = React.useState<any>(null);
+
+  // Subject Monitoring active ID state
+  const [selectedMonitoringClassId, setSelectedMonitoringClassId] = React.useState<string>(classes[0]?.id || '');
+
+  // Faculty Alarm Simulation popup trigger states
+  const [isFacultyAlarmOpen, setIsFacultyAlarmOpen] = React.useState(false);
+  const [selectedAlarmClassId, setSelectedAlarmClassId] = React.useState<string>(classes[0]?.id || '');
+  const [facultyAlarmRoom, setFacultyAlarmRoom] = React.useState('Room 201');
+
+  // Sync state validities
+  React.useEffect(() => {
+    if (classes.length > 0) {
+      if (!classes.some(c => c.id === selectedMonitoringClassId)) {
+        setSelectedMonitoringClassId(classes[0].id);
+      }
+      if (!classes.some(c => c.id === selectedAlarmClassId)) {
+        setSelectedAlarmClassId(classes[0].id);
+      }
+    }
+  }, [classes, selectedMonitoringClassId, selectedAlarmClassId]);
+
+  const activeMonClass = classes.find(c => c.id === selectedMonitoringClassId);
+  const monEnrollments = enrollments.filter(e => e.classId === selectedMonitoringClassId);
+
+  // Compute analytics data for active monitoring class
+  const monClassRecords = attendanceRecords.filter(r => r.classId === selectedMonitoringClassId);
+  const monClassPresents = monClassRecords.filter(r => r.status === 'present').length;
+  const monClassLates = monClassRecords.filter(r => r.status === 'late').length;
+  
+  // Roster at risk (under 85% attendance rate)
+  const monClassAtRisk = monEnrollments.filter(student => {
+    const studentRecords = attendanceRecords.filter(
+      r => r.classId === selectedMonitoringClassId && 
+      (r.studentId === student.studentId || r.studentName === student.studentName)
+    );
+    const presentCount = studentRecords.filter(r => r.status === 'present').length;
+    const lateCount = studentRecords.filter(r => r.status === 'late').length;
+    const rate = studentRecords.length > 0 ? Math.round(((presentCount + lateCount * 0.7) / studentRecords.length) * 100) : 100;
+    return rate < 85;
+  }).length;
+
+  const totalMonRecords = monClassRecords.length;
+  const monClassPresentsRate = totalMonRecords > 0 ? (monClassPresents / totalMonRecords) * 100 : 0;
+  const monClassLatesRate = totalMonRecords > 0 ? (monClassLates / totalMonRecords) * 100 : 0;
+  const monClassAtRiskRate = monEnrollments.length > 0 ? (monClassAtRisk / monEnrollments.length) * 100 : 0;
+
+  const handleCommitFacultyAlarmUpdate = (status: 'attend' | 'cancel' | 'late') => {
+    const matchedClass = classes.find(c => c.id === selectedAlarmClassId);
+    if (!matchedClass) return;
+
+    onEditClass({
+      ...matchedClass,
+      facultyStatusUpdate: status,
+      room: facultyAlarmRoom,
+      lastUpdateTimestamp: Date.now()
+    });
+
+    setIsFacultyAlarmOpen(false);
+    speakText(`Class update status committed. Declared: ${status.toUpperCase()} in ${facultyAlarmRoom}`, accessibility.readAloud);
+  };
+
+  // Modal triggers
+  const [selectedClassDetail, setSelectedClassDetail] = React.useState<ClassSession | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = React.useState<boolean>(false);
+
+  // Form states for class adding/editing
+  const [isFormOpen, setIsFormOpen] = React.useState(false);
+  const [editingClass, setEditingClass] = React.useState<ClassSession | null>(null);
+
+  const [formCode, setFormCode] = React.useState('');
+  const [formName, setFormName] = React.useState('');
+  const [formStart, setFormStart] = React.useState('09:00 AM');
+  const [formEnd, setFormEnd] = React.useState('10:30 AM');
+  const [formRoom, setFormRoom] = React.useState('Room 201');
+  const [formDays, setFormDays] = React.useState<string[]>(['MW']);
+
+  // Profiles edit states
+  const [profileName, setProfileName] = React.useState(userProfile.name);
+  const [profileEmail, setProfileEmail] = React.useState(userProfile.email);
+  const [profileAvatar, setProfileAvatar] = React.useState(userProfile.avatar);
+  const [profileSavedMsg, setProfileSavedMsg] = React.useState(false);
+
+  React.useEffect(() => {
+    setProfileName(userProfile.name);
+    setProfileEmail(userProfile.email);
+    setProfileAvatar(userProfile.avatar);
+  }, [userProfile]);
+
+  // Interval timer for the broadcasted QR expiration count
+  React.useEffect(() => {
+    let interval: any = null;
+    if (activeScreen === 'qr-generator' && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            setQrToken('EXPIRED_SESSION_' + Math.random().toString(36).substring(4, 10).toUpperCase());
+            speakText("Broadcast session expired. Click generate other key to reload.", accessibility.readAloud);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeScreen, timeLeft]);
+
+  const handleCreateNewQrToken = () => {
+    setQrToken('QR_KEY_' + Math.random().toString(36).substring(4, 10).toUpperCase());
+    setTimeLeft(300); // Reset countdown timer
+    speakText("New attendance QR key generated", accessibility.readAloud);
+  };
+
+  const handleOpenEditForm = (cls: ClassSession) => {
+    setEditingClass(cls);
+    setFormCode(cls.code);
+    setFormName(cls.name);
+    setFormStart(cls.startTime);
+    setFormEnd(cls.endTime);
+    setFormRoom(cls.room);
+    setFormDays(cls.days);
+    setIsFormOpen(true);
+    speakText(`Editing class form for ${cls.name}`, accessibility.readAloud);
+  };
+
+  const handleOpenAddForm = () => {
+    setEditingClass(null);
+    setFormCode('');
+    setFormName('');
+    setFormStart('09:00 AM');
+    setFormEnd('10:30 AM');
+    setFormRoom('Room 201');
+    setFormDays(['MW']);
+    setIsFormOpen(true);
+    speakText("Opening add class schedule form", accessibility.readAloud);
+  };
+
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formCode || !formName) return;
+
+    if (editingClass) {
+      onEditClass({
+        ...editingClass,
+        code: formCode,
+        name: formName,
+        startTime: formStart,
+        endTime: formEnd,
+        room: formRoom,
+        days: formDays
+      });
+      speakText("Class details updated successfully", accessibility.readAloud);
+    } else {
+      onAddClass({
+        code: formCode,
+        name: formName,
+        startTime: formStart,
+        endTime: formEnd,
+        room: formRoom,
+        days: formDays,
+        facultyName: userProfile.name,
+        facultyId: userProfile.facultyId || 'fac-1'
+      });
+      speakText("New class registry added", accessibility.readAloud);
+    }
+
+    setIsFormOpen(false);
+  };
+
+  const handleDeleteClick = (classId: string, code: string) => {
+    if (window.confirm(`Are you absolutely sure you want to drop course ${code}?`)) {
+      onDeleteClass(classId);
+      speakText(`Class dropped successfully`, accessibility.readAloud);
+    }
+  };
+
+  const handleDayToggle = (day: string) => {
+    if (formDays.includes(day)) {
+      setFormDays(prev => prev.filter(d => d !== day));
+    } else {
+      setFormDays(prev => [...prev, day]);
+    }
+  };
+
+  const handleOpenSubjectDetails = (cls: ClassSession) => {
+    setSelectedClassDetail(cls);
+    setIsDetailModalOpen(true);
+    speakText(`Opening course detail modal for ${cls.name}`, accessibility.readAloud);
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileAvatar(reader.result as string);
+        speakText("New profile photograph loaded. Submit form to commit.", accessibility.readAloud);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Stats Counters
+  const totalClasses = classes.length;
+  const currentStudentsCount = enrollments.length;
+
+  return (
+    <div className="space-y-6">
+
+      {/* 1. FACULTY INSIGHTS DASHBOARD */}
+      {activeScreen === 'dashboard' && (
+        <div className="space-y-6 animate-fade-in text-left">
+          {/* Welcome Header */}
+          <div className="p-6 md:p-8 rounded-3xl relative overflow-hidden transition-all duration-300 bg-gradient-to-br from-indigo-900 via-zinc-900 to-emerald-950 text-white shadow-xl shadow-emerald-500/5">
+            <div className="relative z-10 space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 text-emerald-400">
+                <Sparkles className="w-3.5 h-3.5" />
+                Faculty Command Hub
+              </span>
+              <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+                Welcome Back, Professor {userProfile.name}!
+              </h2>
+              <p className="text-white/80 text-xs max-w-xl leading-relaxed">
+                Manage your academic curriculum, broadcast time-bound QR keys to enrolled students, and keep track of live campus consultation availability coordinates.
+              </p>
+            </div>
+          </div>
+
+          {/* Targeted Administrative Announcements */}
+          {announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length > 0 && (
+            <div className="p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 text-amber-950 dark:text-amber-300 space-y-3 text-left animate-fade-in">
+              <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-550 bg-amber-500 animate-pulse" />
+                University Bulletins ({announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length})
+              </h4>
+              <div className="space-y-3 divide-y divide-amber-500/10">
+                {announcements
+                  .filter(ann => ann.target === 'all' || ann.target === 'faculty')
+                  .map((ann) => (
+                    <div key={ann.id} className="pt-3 first:pt-0">
+                      <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{ann.title}</h5>
+                      <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed font-sans">{ann.content}</p>
+                      <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-wider block mt-1 uppercase">Issued {new Date(ann.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* High Fidelity Faculty Status & Statistics Suite */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Left: Faculty status indicator card */}
+            <div className="lg:col-span-4 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] flex flex-col justify-between space-y-4">
+              <div className="flex items-center gap-3">
+                <img 
+                  src={userProfile.avatar} 
+                  alt={userProfile.name} 
+                  className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/20"
+                  referrerPolicy="no-referrer"
+                />
+                <div>
+                  <h4 className="text-sm font-black text-zinc-900 dark:text-zinc-100">{userProfile.name}</h4>
+                  <span className="text-[9px] font-mono font-bold tracking-widest uppercase text-zinc-400">LECTURER COORDINATOR</span>
+                </div>
+              </div>
+
+              {/* Status Indicator Panel */}
+              <div className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 space-y-2 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black uppercase text-zinc-400 tracking-wider">Active Campus Status</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider ${
+                    facultyStatus === 'available' ? 'bg-emerald-500/10 text-emerald-555' :
+                    facultyStatus === 'in-class' ? 'bg-amber-500/10 text-amber-500' :
+                    'bg-red-500/10 text-red-555'
+                  }`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                    {facultyStatus}
+                  </span>
+                </div>
+
+                <div className="flex gap-1.5 mt-2">
+                  {[
+                    { id: 'available', label: 'Available', color: 'emerald' },
+                    { id: 'in-class', label: 'In Class', color: 'amber' },
+                    { id: 'unavailable', label: 'Away', color: 'red' }
+                  ].map((st) => (
+                    <button
+                      key={st.id}
+                      onClick={() => {
+                        onChangeFacultyStatus(st.id as any);
+                        speakText(`Status updated to ${st.label}`, accessibility.readAloud);
+                      }}
+                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-extrabold uppercase transition-all border cursor-pointer text-center ${
+                        facultyStatus === st.id
+                          ? st.color === 'emerald' ? 'bg-emerald-500 text-black border-emerald-500 font-extrabold' :
+                            st.color === 'amber' ? 'bg-amber-500 text-black border-amber-500 font-extrabold' :
+                            'bg-red-500 text-white border-red-500 font-extrabold'
+                          : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-650 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[10px] text-zinc-400 leading-normal">
+                Updating your status alerts students in your active rosters through schedule broadcasts.
+              </p>
+            </div>
+
+            {/* Right: Quick Stats Meters */}
+            <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              <div className="p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 flex flex-col justify-between shadow-[0_2px_12px_rgba(0,0,0,0.01)] relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 w-32 h-32 bg-emerald-500/5 dark:bg-emerald-500/[0.02] rounded-full blur-2xl group-hover:scale-110 transition-transform" />
+                <div className="space-y-1 text-left relative z-10">
+                  <span className="text-[9px] font-mono font-black uppercase tracking-widest text-zinc-400">Class Statistics</span>
+                  <h4 className="text-3xl font-black font-mono text-zinc-900 dark:text-zinc-100 mt-2">{totalClasses} Sections</h4>
+                  <p className="text-xs text-zinc-500">Allocated across {classes.reduce((acc, c) => acc + c.days.length, 0)} schedule intervals week-round.</p>
+                </div>
+                <div className="pt-4 border-t border-zinc-100 dark:border-zinc-900 flex items-center justify-between text-[10px] text-zinc-400 mt-4 relative z-10">
+                  <span>Room Allocation List</span>
+                  <span className="font-bold underline text-emerald-550 dark:text-emerald-450 cursor-pointer" onClick={() => setScreen('schedules')}>Inspect Rooms</span>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 flex flex-col justify-between shadow-[0_2px_12px_rgba(0,0,0,0.01)] relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 w-32 h-32 bg-indigo-500/5 dark:bg-indigo-500/[0.02] rounded-full blur-2xl group-hover:scale-110 transition-transform" />
+                <div className="space-y-1 text-left relative z-10">
+                  <span className="text-[9px] font-mono font-black uppercase tracking-widest text-zinc-400">Total Rosters Count</span>
+                  <h4 className="text-3xl font-black font-mono text-zinc-900 dark:text-zinc-100 mt-2">{currentStudentsCount} Students</h4>
+                  <p className="text-xs text-zinc-500">Regularly attending classes. Average active scan tracking speed is <b>1.8s / student</b>.</p>
+                </div>
+                <div className="pt-4 border-t border-zinc-100 dark:border-zinc-900 flex items-center justify-between text-[10px] text-zinc-400 mt-4 relative z-10">
+                  <span className="text-emerald-500 font-extrabold flex items-center gap-0.5">• Term average: 88.5%</span>
+                  <span className="text-emerald-555 font-bold cursor-pointer" onClick={() => setScreen('students-monitoring')}>View Risk Analysis</span>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Full-Width Performance Analytics and Custom Trends */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Attendance Trends (Spline plot spline path) */}
+            <div className="lg:col-span-7 p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
+              <div>
+                <span className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-widest">Attendance trends frequency</span>
+                <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 mt-1">Syllabus Completion & Scanning activity</h3>
+                <p className="text-xs text-zinc-400 leading-normal mt-0.5">Time-based analysis of attendance scans registered over daily classes.</p>
+              </div>
+
+              {/* Attendance trends spline plot */}
+              <div className="w-full h-44 rounded-2xl border border-zinc-150 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30 p-3 relative flex items-end">
+                <svg viewBox="0 0 400 150" className="w-full h-full overflow-visible">
+                  <defs>
+                    <linearGradient id="facAttendGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
+                  
+                  {/* Grid lines */}
+                  <line x1="10" y1="30" x2="390" y2="30" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
+                  <line x1="10" y1="70" x2="390" y2="70" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
+                  <line x1="10" y1="110" x2="390" y2="110" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" strokeDasharray="2 2" />
+
+                  {/* Graph Line */}
+                  <path d="M 20 120 L 100 80 Q 180 30, 260 50 T 380 20 L 380 150 L 20 150 Z" fill="url(#facAttendGrad)" />
+                  <path d="M 20 120 L 100 80 Q 180 30, 260 50 T 380 20" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
+                  
+                  <circle cx="100" cy="80" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2" />
+                  <circle cx="260" cy="50" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2" />
+                  <circle cx="380" cy="20" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2PX" />
+
+                  <text x="100" y="65" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">75%</text>
+                  <text x="260" y="35" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">89%</text>
+                  <text x="380" y="10" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">94%</text>
+
+                  {/* Day labels */}
+                  <text x="20" y="142" fontSize="8" fill="#888">Monday</text>
+                  <text x="100" y="142" fontSize="8" fill="#888">Tuesday</text>
+                  <text x="180" y="142" fontSize="8" fill="#888">Wednesday</text>
+                  <text x="260" y="142" fontSize="8" fill="#888">Thursday</text>
+                  <text x="340" y="142" fontSize="8" fill="#888">Friday</text>
+                </svg>
+              </div>
+            </div>
+
+            {/* Student Performance Analytics */}
+            <div className="lg:col-span-5 p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
+              <div>
+                <span className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-widest">Performance Analysis</span>
+                <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 mt-1">Student Performance rosters</h3>
+                <p className="text-xs text-zinc-400 leading-normal mt-0.5">Visual representation of general roster standings in term evaluations.</p>
+              </div>
+
+              <div className="space-y-3.5 pt-1">
+                {[
+                  { name: 'Passing (85% - 100% attendance)', count: classes.length > 0 ? enrollments.length - 2 : 12, percent: 84, color: 'emerald' },
+                  { name: 'Borderline Range (75% - 85% attendance)', count: classes.length > 0 ? 2 : 1, percent: 11, color: 'amber' },
+                  { name: 'Warning/At-Risk (<75% attendance)', count: 0, percent: 5, color: 'red' }
+                ].map((stat, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="font-bold text-zinc-700 dark:text-zinc-200">{stat.name}</span>
+                      <span className="font-mono text-zinc-400">{stat.count} students ({stat.percent}%)</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-900 overflow-hidden relative">
+                      <div 
+                        className={`h-full rounded-full ${
+                          stat.color === 'emerald' ? 'bg-emerald-500' :
+                          stat.color === 'amber' ? 'bg-amber-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${stat.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Class Cards list */}
+            <div className="lg:col-span-8 space-y-4">
+              <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-900">
+                  <div>
+                    <h3 className="font-extrabold text-base text-zinc-900 dark:text-zinc-100">Assigned Curriculums</h3>
+                    <p className="text-xs text-zinc-400">Click any card to inspect active student registries and attendance trends</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  {classes.map(cls => {
+                    const enrolledCount = enrollments.filter(e => e.classId === cls.id).length;
+                    return (
+                      <div
+                        key={cls.id}
+                        onClick={() => handleOpenSubjectDetails(cls)}
+                        className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/20 dark:bg-zinc-900/30 hover:bg-zinc-100/40 dark:hover:bg-zinc-900/60 transition-all cursor-pointer text-left"
+                      >
+                        <span className="text-[9px] font-black tracking-widest px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-bold uppercase animate-fade-in">
+                          {cls.code}
+                        </span>
+                        <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight mt-2.5 truncate">{cls.name}</h4>
+                        
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-900">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {cls.startTime}
+                          </span>
+                          <span className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-zinc-700 dark:text-zinc-300 font-bold">
+                            <Users className="w-3 h-3 text-zinc-500 inline animate-pulse" /> {enrolledCount} Students
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Merged Pre-Class Clock & Status Broadcast card */}
+              <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm text-left">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-150 dark:border-zinc-900">
+                  <div>
+                    <h3 className="font-extrabold text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-emerald-500 animate-pulse" />
+                      Pre-Class Clock & Status Broadcast
+                    </h3>
+                    <p className="text-xs text-zinc-400">Merged Pre-Class Alert system. Automatically prompts status update options 5 minutes before scheduled classes.</p>
+                  </div>
+                </div>
+
+                {!isFacultyAlarmOpen ? (
+                  <div className="py-8 flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-500 flex items-center justify-center text-lg">
+                      ⏰
+                    </div>
+                    <div className="max-w-md space-y-1">
+                      <h4 className="text-sm font-bold text-zinc-800 dark:text-zinc-205">Broadcast Standby</h4>
+                      <p className="text-xs text-zinc-500">Currently no active pre-class countdown is running. Status option prompts and room modification inputs appear 5 minutes before scheduled class times.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const firstClass = classes[0];
+                        if (firstClass) {
+                          setSelectedAlarmClassId(firstClass.id);
+                          setFacultyAlarmRoom(firstClass.room);
+                        }
+                        setIsFacultyAlarmOpen(true);
+                        speakText("Simulating 5 minute countdown alarm clock before class starts.", accessibility.readAloud);
+                      }}
+                      className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-2 shadow-sm"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Simulate 5m Before Class
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pt-4 space-y-5">
+                    {/* Active Countdown Header */}
+                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-extrabold animate-pulse">
+                        <Clock className="w-4 h-4 animate-spin" />
+                        <span>CLASS COMMENCEMENT COUNTDOWN</span>
+                      </div>
+                      <span className="font-mono text-zinc-900 dark:text-zinc-100 font-black px-2 py-0.5 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-850">
+                        05:00 MINS LEFT
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Commencing Subject Dropdown */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-wider">Commencing Curriculum Class</label>
+                        <select
+                          value={selectedAlarmClassId}
+                          onChange={(e) => {
+                            setSelectedAlarmClassId(e.target.value);
+                            const found = classes.find(c => c.id === e.target.value);
+                            if (found) setFacultyAlarmRoom(found.room);
+                          }}
+                          className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-55 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-105 outline-none font-bold"
+                        >
+                          {classes.map(c => (
+                            <option key={c.id} value={c.id}>{c.code}: {c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Room Change field */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-wider">Room Modification Option</label>
+                        <div className="relative">
+                          <MapPin className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
+                          <input
+                            type="text"
+                            value={facultyAlarmRoom}
+                            onChange={(e) => setFacultyAlarmRoom(e.target.value)}
+                            placeholder="e.g. Room 303-C"
+                            className="w-full text-xs pl-9 pr-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-55 dark:bg-zinc-900 outline-none text-zinc-900 dark:text-zinc-105 font-semibold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Fast Actions Row */}
+                    <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-900">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">Declare Attendance & Update Status</span>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCommitFacultyAlarmUpdate('attend')}
+                          className="p-3 bg-emerald-500 hover:bg-emerald-400 cursor-pointer rounded-xl text-black font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                        >
+                          Attend
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCommitFacultyAlarmUpdate('cancel')}
+                          className="p-3 bg-red-500 hover:bg-red-400 cursor-pointer rounded-xl text-white font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                        >
+                          Cancel Class
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCommitFacultyAlarmUpdate('late')}
+                          className="p-3 bg-amber-500 hover:bg-amber-400 cursor-pointer rounded-xl text-black font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                        >
+                          Late Arrival
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[10.5px] text-zinc-400 flex items-center justify-between">
+                      <span>Standards Protocol Sync active (auto-posts)</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsFacultyAlarmOpen(false)}
+                        className="text-red-500 underline font-semibold cursor-pointer"
+                      >
+                        Bypass Prompt
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Interactive Sidebar Clock */}
+            <div className="lg:col-span-4 space-y-4">
+              <AlarmClock readAloudEnabled={accessibility.readAloud} />
+              
+              <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 text-left">
+                <h4 className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-emerald-550 dark:text-emerald-400" />
+                  Direct QR Code Broadcasts
+                </h4>
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-normal mb-3">
+                  Open the QR generation pane to cast a secure attendance token. Students can scans dynamically to enroll.
+                </p>
+                <button
+                  onClick={() => setScreen('qr-generator')}
+                  type="button"
+                  className="w-full text-center py-2.5 bg-emerald-505 bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-black uppercase tracking-widest rounded-xl cursor-pointer transition-all active:scale-95"
+                >
+                  Open QR Generator
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 2. SUBJECTS & SCHEDULE EDITOR SCREEN */}
+      {activeScreen === 'schedule-editor' && (
+        <div className="space-y-6 animate-fade-in text-left">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setScreen('dashboard')} 
+              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+            >
+              ← Back to Dashboard
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                <Calendar className="w-5.5 h-5.5 text-emerald-500" />
+                Manage Course Curriculums
+              </h2>
+              <p className="text-xs text-zinc-400">Add, edit, or configure classroom configurations and schedules.</p>
+            </div>
+
+            <button
+              onClick={handleOpenAddForm}
+              type="button"
+              className="px-4 py-2.5 bg-emerald-505 bg-emerald-500 text-black text-xs font-black uppercase tracking-wider rounded-xl hover:bg-emerald-400 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-4 h-4 shrink-0 stroke-[2.5]" />
+              Add Class Term
+            </button>
+          </div>
+
+          {/* Schedule Input Editor Form details */}
+          {isFormOpen && (
+            <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-md">
+              <div className="flex justify-between items-center pb-3 border-b border-zinc-100 dark:border-zinc-900 mb-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-zinc-900 dark:text-zinc-100">
+                  {editingClass ? 'Edit Class specifications' : 'Formulate a New Course class'}
+                </h3>
+                <button
+                  onClick={() => setIsFormOpen(false)}
+                  type="button"
+                  className="p-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-455 cursor-pointer"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitForm} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-widest">Course Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CS254"
+                      value={formCode}
+                      onChange={(e) => setFormCode(e.target.value)}
+                      required
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-widest">Topic Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Distributed Computing"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      required
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-805 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-widest">Start Hours</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 09:30 AM"
+                      value={formStart}
+                      onChange={(e) => setFormStart(e.target.value)}
+                      required
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-widest">End Hours</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 11:00 AM"
+                      value={formEnd}
+                      onChange={(e) => setFormEnd(e.target.value)}
+                      required
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-widest">Lecture Room / Gym</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Room 303-C"
+                      value={formRoom}
+                      onChange={(e) => setFormRoom(e.target.value)}
+                      required
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-widest">Scheduled Recurrence Days</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['MW', 'TTh', 'FS', 'A'].map(day => {
+                      const selected = formDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => handleDayToggle(day)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                            selected 
+                              ? 'bg-emerald-500 text-black' 
+                              : 'bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 border border-zinc-200 dark:border-zinc-805 text-zinc-650 dark:text-zinc-300'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-emerald-500 text-black rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer hover:bg-emerald-400"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* List of active schedules */}
+          <div className="space-y-4">
+            {classes.map(cls => {
+              const studentRegisteredCount = enrollments.filter(e => e.classId === cls.id).length;
+              return (
+                <div 
+                  key={cls.id}
+                  className="p-5 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all hover:border-emerald-500/10 cursor-pointer"
+                  onClick={() => handleOpenSubjectDetails(cls)}
+                >
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-350 px-2.5 py-0.5 rounded">
+                        {cls.code}
+                      </span>
+                      <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 hover:underline">{cls.name}</h3>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400 mt-2.5">
+                      <span className="flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-300">
+                        <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                        {cls.startTime} - {cls.endTime}
+                      </span>
+                      <span className="flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-300">
+                        <MapPin className="w-3.5 h-3.5 text-zinc-400" />
+                        {cls.room}
+                      </span>
+                      <span className="text-[10px] bg-zinc-150 dark:bg-zinc-900 px-2.5 py-0.5 rounded font-black uppercase text-zinc-650 dark:text-zinc-400">
+                        {cls.days.join(', ')}
+                      </span>
+                      <span className="text-[10px] bg-indigo-100/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded font-black uppercase">
+                        {studentRegisteredCount} enrolled
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Operational actions - stopPropagation so click detail modal doesn't fire when deleting */}
+                  <div className="flex items-center gap-2 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleOpenEditForm(cls)}
+                      type="button"
+                      className="p-2.5 border border-zinc-200 dark:border-zinc-850 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-600 dark:text-zinc-400 cursor-pointer"
+                      title="Edit Class details"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClick(cls.id, cls.code)}
+                      type="button"
+                      className="p-2.5 border border-red-200 dark:border-red-950/40 rounded-xl hover:bg-red-500/10 text-red-500 cursor-pointer"
+                      title="Delete Class Schedule"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. QR CODES ATTENDANCE PASSCODE GENERATOR VIEW */}
+      {activeScreen === 'qr-generator' && (
+        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setScreen('dashboard')} 
+              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+            >
+              ← Back to Dashboard
+            </button>
+          </div>
+          <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm text-left">
+            <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2 mb-4">
+              <QrCode className="w-5.5 h-5.5 text-blue-600" />
+              Dynamic Single-Use Attendance QR Generator
+            </h2>
+            
+            {/* Auto Schedule detector card */}
+            {(() => {
+              const now = new Date();
+              const daysMap = ['A', 'MW', 'TTh', 'MW', 'TTh', 'FS', 'FS'];
+              const todayGroup = daysMap[now.getDay()];
+              const matchedActive = classes.find(c => c.days.includes(todayGroup) || c.days.includes('A')) || classes[0];
+              
+              if (matchedActive) {
+                return (
+                  <div className="mb-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 flex items-start gap-2.5 text-left">
+                    <span className="text-lg mt-0.5 animate-bounce">🗓️</span>
+                    <div>
+                      <p className="font-extrabold text-blue-800 dark:text-blue-300">Active Scheduled Class Detected</p>
+                      <p className="mt-0.5 leading-relaxed font-semibold text-zinc-700 dark:text-zinc-300">
+                        Based on the current campus clock and days, we have automatically selected <strong className="font-black text-black dark:text-white bg-blue-500/10 px-1.5 py-0.5 rounded">{matchedActive.code}: {matchedActive.name}</strong> ({matchedActive.startTime}, room: {matchedActive.room}) as the target registrar subject.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            <div className="space-y-4">
+              {/* Dropdown ONLY shown if no active class is currently timing-matched */}
+              {(() => {
+                const now = new Date();
+                const daysMap = ['A', 'MW', 'TTh', 'MW', 'TTh', 'FS', 'FS'];
+                const todayGroup = daysMap[now.getDay()];
+                const hasMatch = classes.some(c => c.days.includes(todayGroup) || c.days.includes('A'));
+                
+                if (!hasMatch) {
+                  return (
+                    <div className="space-y-1.5 text-left">
+                      <label className="block text-xs font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-widest">Select Target Curriculum Subject</label>
+                      <select
+                        value={activeQRClass}
+                        onChange={(e) => {
+                          setActiveQRClass(e.target.value);
+                          speakText("Class target shifted, generate new code to initiate", accessibility.readAloud);
+                        }}
+                        className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-555 outline-none text-zinc-900 dark:text-zinc-100"
+                      >
+                        {classes.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.code} - {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* QR Code matrix box representation */}
+              <div className="p-6 bg-zinc-50 dark:bg-zinc-905 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col items-center justify-center space-y-4 relative">
+                <div className="p-4 bg-white dark:bg-zinc-950 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800">
+                  {qrToken && qrToken !== 'STANDBY' && qrToken !== 'EXPIRED' ? (
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrToken)}`}
+                      alt="ClassPulse Active Session QR Code"
+                      className="w-40 h-40 rounded object-contain border border-zinc-100 dark:border-zinc-900"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-40 h-40 bg-zinc-150 dark:bg-zinc-900 flex flex-wrap p-2 rounded relative border border-zinc-200 dark:border-zinc-850 items-center justify-center">
+                      <div className="absolute inset-0 border border-emerald-500/20 rounded animate-pulse" />
+                      {/* Fake microcode block matrix grids */}
+                      <div className="w-10 h-10 border-4 border-zinc-800 dark:border-zinc-200 bg-transparent absolute top-2 left-2" />
+                      <div className="w-10 h-10 border-4 border-zinc-800 dark:border-zinc-200 bg-transparent absolute top-2 right-2" />
+                      <div className="w-10 h-10 border-4 border-zinc-800 dark:border-zinc-200 bg-transparent absolute bottom-2 left-2" />
+                      <div className="absolute inset-8 border border-zinc-400 dark:border-zinc-650 flex items-center justify-center text-zinc-500 font-mono text-[9px] font-black uppercase text-center">
+                        STANDBY GENERATOR
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-center space-y-1">
+                  <span className="text-xs font-mono font-black tracking-widest px-3 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg">
+                    {qrToken === 'STANDBY' ? 'READY - CLICK GENERATE' : qrToken}
+                  </span>
+                  
+                  {qrToken !== 'STANDBY' && qrToken !== 'EXPIRED' && (
+                    <div className="text-[11px] text-zinc-450 dark:text-zinc-400 font-semibold mt-3 flex items-center justify-center gap-1 bg-zinc-100 dark:bg-zinc-900 px-3 py-1 rounded-full border border-zinc-250 dark:border-zinc-850">
+                      <Clock className="w-3.5 h-3.5 text-blue-500 animate-[spin_4s_linear_infinite]" />
+                      Class Session Expires in: <span className="font-mono text-blue-500 dark:text-blue-400 font-black ml-1 text-xs">{timeLeft}s (30m countdown)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Rules and Limits warning card */}
+              <div className="p-3.5 rounded-xl bg-orange-500/5 border border-orange-500/10 text-[10px] text-zinc-500 leading-relaxed font-semibold text-left">
+                ⚠️ <strong>Single-Use Security Enforcement:</strong> This system applies strict rules. Each subject can only generate ONE QR session code per day. Students scanning within the first 10 minutes are recorded as <strong>Present</strong>. Scans from 10 to 30 minutes are marked as <strong>Late</strong>. Beyond 30 minutes, the session key expires automatically.
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    const now = new Date();
+                    const daysMap = ['A', 'MW', 'TTh', 'MW', 'TTh', 'FS', 'FS'];
+                    const todayGroup = daysMap[now.getDay()];
+                    const activeMatch = classes.find(c => c.days.includes(todayGroup) || c.days.includes('A')) || classes.find(c => c.id === activeQRClass) || classes[0];
+                    
+                    if (!activeMatch) return;
+
+                    // Enforce "it can only generate one time in every subject today"
+                    if (activeMatch.qrGeneratedAt) {
+                      const lastGenDate = new Date(activeMatch.qrGeneratedAt).toDateString();
+                      const todayDate = new Date().toDateString();
+                      if (lastGenDate === todayDate) {
+                        alert(`🚫 QR session has already been generated once for ${activeMatch?.code} today! In compliance with class policy rules, you can only generate a QR session code one time.`);
+                        speakText(`Registration is already occupied for today`, accessibility.readAloud);
+                        return;
+                      }
+                    }
+
+                    const generatedKey = 'CODE_' + activeMatch.code.toUpperCase() + '_' + Math.random().toString(36).substring(4, 9).toUpperCase();
+                    
+                    // Propagate to App parent state
+                    onEditClass({
+                      ...activeMatch,
+                      qrToken: generatedKey,
+                      qrGeneratedAt: Date.now()
+                    });
+
+                    setQrToken(generatedKey);
+                    setTimeLeft(1800); // 30 minutes countdown (1800 seconds!)
+                    speakText(`Successfully initialized 30 minute QR session code for ${activeMatch.name}`, accessibility.readAloud);
+                  }}
+                  type="button"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer active:scale-95 shadow-md shadow-blue-500/10 text-center"
+                >
+                  Generate 30-Min Session Code
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. NOTIFICATIONS VIEW */}
+      {activeScreen === 'notifications' && (
+        <div className="max-w-xl mx-auto space-y-4 animate-fade-in text-left">
+          <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+            Notification logs
+          </h2>
+          <div className="space-y-2.5">
+            {notifications.map((notif) => (
+              <div 
+                key={notif.id}
+                className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-emerald-550 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-555">{notif.type}</span>
+                  <span className="text-[9px] text-zinc-400 uppercase font-bold">{notif.timestamp}</span>
+                </div>
+                <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 mt-2">{notif.title}</h4>
+                <p className="text-[11px] text-zinc-400 mt-1">{notif.message}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. PROFILE TAB */}
+      {activeScreen === 'profile' && (
+        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setScreen('dashboard')} 
+              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+            >
+              ← Back to Dashboard
+            </button>
+          </div>
+          <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
+            <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-zinc-100 mb-5 animate-fade-in">Profile Information</h2>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-5 pb-6 border-b border-zinc-100 dark:border-zinc-900 mb-5">
+              <div className="relative group shrink-0">
+                <img 
+                  src={profileAvatar} 
+                  alt="Faculty Avatar" 
+                  className="w-20 h-20 rounded-full object-cover border-4 border-emerald-500/20 shadow-md" 
+                />
+                <label className="absolute bottom-0 right-0 p-1.5 rounded-full bg-emerald-500 text-black hover:bg-emerald-400 cursor-pointer shadow-md flex items-center justify-center transition-transform active:scale-90">
+                  <Camera className="w-3.5 h-3.5" />
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleImageFileChange}
+                    className="hidden" 
+                  />
+                </label>
+              </div>
+
+              <div className="text-center sm:text-left min-w-0">
+                <h3 className="font-extrabold text-base text-zinc-900 dark:text-zinc-100 truncate">Professor {profileName}</h3>
+                <p className="text-xs text-zinc-400 truncate">{profileEmail}</p>
+                <div className="flex flex-wrap gap-2 mt-2.5 justify-center sm:justify-start">
+                  <span className="text-[9px] font-bold tracking-widest uppercase px-2.5 py-0.5 bg-zinc-100 dark:bg-zinc-850 text-zinc-500 rounded border border-zinc-200 dark:border-zinc-800">
+                    FAC_ID: {userProfile.facultyId || "FAC-19034"}
+                  </span>
+                  <span className="text-[9px] font-bold tracking-widest uppercase px-2.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-650 dark:text-zinc-300 rounded border border-zinc-200 dark:border-zinc-800">
+                    Dept: {userProfile.department || "Information systems"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              onUpdateProfile({
+                ...userProfile,
+                name: profileName,
+                email: profileEmail,
+                avatar: profileAvatar
+              });
+              setProfileSavedMsg(true);
+              speakText("Profile details fully updated in database", accessibility.readAloud);
+              setTimeout(() => setProfileSavedMsg(false), 3000);
+            }} className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-widest">Professor Name</label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    required
+                    className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-widest">Academic Email</label>
+                  <input
+                    type="email"
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                    required
+                    className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                  />
+                </div>
+              </div>
+
+              {/* Upload image helper drag-n-drop simulated box */}
+              <div className="p-4 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
+                <UploadCloud className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+                <p className="text-[11px] font-bold text-zinc-650 dark:text-zinc-300 font-sans">Drag profile files here or press camera badge</p>
+                <p className="text-[9px] text-zinc-400 mt-0.5">Supports PNG, JPG, WebP up to 3MB files which encode instantly to local profiles.</p>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center">
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 text-black text-xs font-black uppercase tracking-wider hover:bg-emerald-400 cursor-pointer transition-all"
+                >
+                  Save Profile Details
+                </button>
+
+                {profileSavedMsg && (
+                  <span className="text-xs text-emerald-500 font-extrabold flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-pulse">
+                    <CheckCircle className="w-4 h-4" />
+                    Profile synced globally!
+                  </span>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Roster detail modal */}
+      <SubjectDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        cls={selectedClassDetail}
+        enrollments={enrollments}
+        records={attendanceRecords}
+        facultyStatuses={facultyStatuses}
+      />
+
+      {/* Messages tab screen */}
+      {activeScreen === 'messages' && (
+        <div className="space-y-6 animate-fade-in text-left">
+          <div>
+            <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+              <MessageSquare className="w-5.5 h-5.5 text-blue-600 animate-pulse" />
+              Direct Student Messaging Hub
+            </h2>
+            <p className="text-xs text-zinc-400">Instantly converse with warning/dropped students or broadcast general class announcements.</p>
+          </div>
+          <Messages 
+            userProfile={userProfile} 
+            classes={classes} 
+            enrollments={enrollments} 
+            accessibility={accessibility} 
+          />
+        </div>
+      )}
+
+      {/* 6. STUDENTS MONITORING VIEW */}
+      {activeScreen === 'students-monitoring' && (
+        <div className="space-y-6 animate-fade-in text-left">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setScreen('dashboard')} 
+                  className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+                >
+                  ← Back to Dashboard
+                </button>
+              </div>
+              <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2 mt-3">
+                <Users className="w-5.5 h-5.5 text-emerald-500" />
+                Active Student Rosters & At-Risk Monitoring
+              </h2>
+              <p className="text-xs text-zinc-400">Roster lists and interactive health metrics for your assigned class rosters.</p>
+            </div>
+          </div>
+
+          {/* Subject Filter tab pills */}
+          <div className="flex flex-wrap gap-2 pb-2">
+            {classes.map((cls) => {
+              const count = enrollments.filter(e => e.classId === cls.id).length;
+              const isSelected = selectedMonitoringClassId === cls.id;
+              return (
+                <button
+                  key={cls.id}
+                  onClick={() => setSelectedMonitoringClassId(cls.id)}
+                  type="button"
+                  className={`px-4 py-2 text-xs font-black rounded-xl border transition-all cursor-pointer flex items-center gap-2 ${
+                    isSelected
+                      ? 'bg-emerald-500 text-black border-emerald-500 font-extrabold'
+                      : 'bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-850 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-650 dark:text-zinc-300 font-bold'
+                  }`}
+                >
+                  <span>{cls.code}: {cls.name}</span>
+                  <span className={`text-[10px] font-mono px-1.5 h-4.5 min-w-4.5 rounded-full flex items-center justify-center font-black ${
+                    isSelected ? 'bg-black text-white' : 'bg-zinc-100 dark:bg-zinc-900'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Roster detail area */}
+          {activeMonClass ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* List of enrolled students in matched class */}
+              <div className="lg:col-span-8 space-y-4">
+                <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
+                  <h3 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mb-4 tracking-tight flex items-center justify-between">
+                    <span>Class Enrolled Roster ({monEnrollments.length})</span>
+                    <span className="text-[10px] font-black uppercase text-zinc-400">Attendance status</span>
+                  </h3>
+
+                  {monEnrollments.length === 0 ? (
+                    <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs font-medium">
+                      No student registration records found in academic ledger table for this class.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+                      {monEnrollments.map(student => {
+                        const studentRecords = attendanceRecords.filter(
+                          r => r.classId === activeMonClass.id && 
+                          (r.studentId === student.studentId || r.studentName === student.studentName)
+                        );
+                        
+                        const pres = studentRecords.filter(r => r.status === 'present').length;
+                        const late = studentRecords.filter(r => r.status === 'late').length;
+                        const abs = studentRecords.filter(r => r.status === 'absent').length;
+
+                        const total = studentRecords.length;
+                        const rate = total > 0 ? Math.round(((pres + late * 0.75) / total) * 105) : 100;
+                        const rateClamped = rate > 100 ? 100 : rate;
+                        const isUnderMonitoring = rateClamped < 85;
+
+                        return (
+                          <div key={student.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
+                            <div className="flex items-center gap-3">
+                              <img 
+                                src={student.studentAvatar} 
+                                alt={student.studentName} 
+                                className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
+                              />
+                              <div>
+                                <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
+                                  <span>{student.studentName}</span>
+                                  {(() => {
+                                    // Calculate precise warning check
+                                    const studentRecords = attendanceRecords.filter(
+                                      r => r.classId === activeMonClass.id && 
+                                      (r.studentId === student.studentId || r.studentName === student.studentName)
+                                    );
+                                    const absentsForClass = studentRecords.filter(r => r.status === 'absent');
+                                    const countAbsentsForClass = absentsForClass.length;
+
+                                    let maxConsecutive = 0;
+                                    let currConsecutive = 0;
+                                    const sortedRecs = [...studentRecords].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    for (const r of sortedRecs) {
+                                      if (r.status === 'absent') {
+                                        currConsecutive++;
+                                        if (currConsecutive > maxConsecutive) currConsecutive = maxConsecutive;
+                                      } else {
+                                        currConsecutive = 0;
+                                      }
+                                    }
+
+                                    if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                                      return (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-red-500 bg-red-500/10 border border-red-500/15">
+                                          🚫 Dropped
+                                        </span>
+                                      );
+                                    } else if (countAbsentsForClass >= 3) {
+                                      return (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-amber-550 bg-amber-500/10 border border-amber-500/15">
+                                          ⚠️ Warning
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-emerald-500 bg-emerald-500/10 border border-emerald-505">
+                                        Good Stand
+                                      </span>
+                                    );
+                                  })()}
+                                </h4>
+                                <p className="text-[10px] text-zinc-455 mt-0.5 font-mono">{student.studentId} • Enrolled {student.enrolledAt}</p>
+                              </div>
+                            </div>
+
+                            {/* Attendance figures logs */}
+                            <div className="flex items-center gap-6 self-end sm:self-auto">
+                              <div className="flex gap-4 text-center font-mono">
+                                <div>
+                                  <p className="text-[8px] font-bold text-zinc-400">PRESENT(S)</p>
+                                  <p className="text-xs font-black text-emerald-500">{pres}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[8px] font-bold text-zinc-400">LATE(S)</p>
+                                  <p className="text-xs font-black text-amber-500">{late}</p>
+                                </div>
+                                <div className="p-0 border-r border-zinc-200 dark:border-zinc-800 h-6 self-center" />
+                                <div>
+                                  <p className="text-[8px] font-bold text-zinc-400">PERCENT RATE</p>
+                                  <p className={`text-xs font-black ${isUnderMonitoring ? 'text-red-500 font-extrabold' : 'text-zinc-800 dark:text-zinc-250'}`}>{rateClamped}%</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Roster summary analysis widget with interactive SVG metrics */}
+              <div className="lg:col-span-4 space-y-4">
+                <div className="p-5 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm text-left space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-300">
+                    Subject Metrics
+                  </h4>
+
+                  <div className="border border-zinc-200 dark:border-zinc-900 rounded-xl p-4 bg-zinc-50/50 dark:bg-zinc-950/60 text-center">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Class Session Rate Counts</p>
+                    
+                    {/* Visual metrics bar charts */}
+                    <div className="space-y-3.5 text-left">
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 mb-1">
+                          <span>PRESENT TOTALS</span>
+                          <span className="font-mono text-emerald-500 font-extrabold">{monClassPresents} Logs</span>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, monClassPresentsRate)}%` }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 mb-1">
+                          <span>LATE CHECK-INS</span>
+                          <span className="font-mono text-amber-500 font-extrabold">{monClassLates} Logs</span>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: `${Math.min(100, monClassLatesRate)}%` }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 mb-1">
+                          <span>STUDENTS AT RISK</span>
+                          <span className="font-mono text-red-500 font-extrabold">{monClassAtRisk} Students</span>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.min(100, monClassAtRiskRate)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl relative overflow-hidden">
+                    <div className="flex gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <h5 className="text-xs font-extrabold text-red-500">Critical Lateness Target</h5>
+                        <p className="text-[10px] text-zinc-400 leading-normal mt-1">
+                          Students with less than 85% computed status attendance rate are highlighted in the student dashboard and reported instantly to administration records.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="p-8 border border-dashed rounded-3xl bg-white dark:bg-zinc-950 text-center text-zinc-400 text-xs">
+              No subjects listed. Create class registers in My Classes first.
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* Faculty Commencement Alarm Clock popup modal */}
+      {isFacultyAlarmOpen && (
+        <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md p-6 rounded-3.5xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-2xl relative animate-scale-up space-y-5 text-left border-2 border-emerald-500/25">
+            <button
+              onClick={() => setIsFacultyAlarmOpen(false)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-650 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 bg-emerald-500 text-black rounded-full flex items-center justify-center font-bold mx-auto animate-bounce text-lg">
+                ⏰
+              </div>
+              <h3 className="font-extrabold text-lg text-zinc-900 dark:text-zinc-100 uppercase tracking-tight">Class Commencement Alarm</h3>
+              <p className="text-xs text-zinc-400 leading-normal">
+                Your assigned scheduled curriculum class is commencing in 5 minutes! Declare your session status instantly to broadcast to student registers.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-450 dark:text-zinc-400 uppercase tracking-wider">COMMENCING SUBJECT</label>
+                <select
+                  value={selectedAlarmClassId}
+                  onChange={(e) => {
+                    setSelectedAlarmClassId(e.target.value);
+                    const found = classes.find(c => c.id === e.target.value);
+                    if (found) setFacultyAlarmRoom(found.room);
+                  }}
+                  className="w-full text-xs p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-905 outline-none text-zinc-900 dark:text-zinc-150 font-black"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.code}: {c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-455 dark:text-zinc-400 uppercase tracking-wider font-bold">ROOM CHANGE OPTION</label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={facultyAlarmRoom}
+                    onChange={(e) => setFacultyAlarmRoom(e.target.value)}
+                    placeholder="e.g. Room 303-C"
+                    className="w-full text-xs pl-9 pr-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50 dark:bg-zinc-900 outline-none text-zinc-900 dark:text-zinc-100 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2.5 pt-2">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-bold">SELECT ATTEND CODE UPDATE</p>
+                
+                <div className="grid grid-cols-3 gap-2.5">
+                  <button
+                    onClick={() => {
+                      handleCommitFacultyAlarmUpdate('attend');
+                    }}
+                    className="p-3 bg-emerald-500 hover:bg-emerald-400 cursor-pointer rounded-xl text-black font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                  >
+                    Attend
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCommitFacultyAlarmUpdate('cancel');
+                    }}
+                    className="p-3 bg-red-500 hover:bg-red-400 cursor-pointer rounded-xl text-white font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCommitFacultyAlarmUpdate('late');
+                    }}
+                    className="p-3 bg-amber-500 hover:bg-amber-400 cursor-pointer rounded-xl text-black font-black uppercase text-[10px] tracking-wider text-center transition-transform active:scale-95"
+                  >
+                    Late Arrival
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-[10px] text-zinc-400 text-center font-mono">
+              ClassPulse Standard Broadcast Protocol (Instant sync)
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
