@@ -29,7 +29,12 @@ import {
   UploadCloud,
   TrendingUp,
   UserCheck,
-  MessageSquare
+  MessageSquare,
+  Eye,
+  EyeOff,
+  BellRing,
+  Search,
+  Inbox
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock from './AlarmClock';
@@ -53,6 +58,9 @@ interface DashboardFacultyProps {
   facultyStatuses: FacultyStatus[];
   onUpdateProfile: (updated: UserProfile) => void;
   announcements?: Announcement[];
+  excuseLetters?: any[];
+  onUpdateExcuseStatus?: (id: string, status: 'pending' | 'valid' | 'invalid' | 'approved' | 'rejected') => void;
+  onUpdateAttendanceRecord?: (recordId: string, status: 'present' | 'late' | 'absent') => void;
 }
 
 export default function DashboardFaculty({
@@ -71,9 +79,25 @@ export default function DashboardFaculty({
   notifications,
   facultyStatuses,
   onUpdateProfile,
-  announcements = []
+  announcements = [],
+  excuseLetters = [],
+  onUpdateExcuseStatus,
+  onUpdateAttendanceRecord
 }: DashboardFacultyProps) {
   
+  // Bulletins Visibility toggle
+  const [isBulletinsHidden, setIsBulletinsHidden] = React.useState<boolean>(() => {
+    return localStorage.getItem('classpulse_faculty_bulletins_hidden') === 'true';
+  });
+
+  // Notifications filters & search
+  const [notifSearch, setNotifSearch] = React.useState('');
+  const [notifFilter, setNotifFilter] = React.useState<'all' | 'alerts' | 'updates'>('all');
+
+  React.useEffect(() => {
+    localStorage.setItem('classpulse_faculty_bulletins_hidden', String(isBulletinsHidden));
+  }, [isBulletinsHidden]);
+
   // Timer for QR code attendance simulation
   const [timeLeft, setTimeLeft] = React.useState(300); // 5 minutes standard
   const [activeQRClass, setActiveQRClass] = React.useState<string>(classes[0]?.id || '');
@@ -82,6 +106,7 @@ export default function DashboardFaculty({
 
   // Subject Monitoring active ID state
   const [selectedMonitoringClassId, setSelectedMonitoringClassId] = React.useState<string>(classes[0]?.id || '');
+  const [expandedStudentId, setExpandedStudentId] = React.useState<string | null>(null);
 
   // Faculty Alarm Simulation popup trigger states
   const [isFacultyAlarmOpen, setIsFacultyAlarmOpen] = React.useState(false);
@@ -107,6 +132,7 @@ export default function DashboardFaculty({
   const monClassRecords = attendanceRecords.filter(r => r.classId === selectedMonitoringClassId);
   const monClassPresents = monClassRecords.filter(r => r.status === 'present').length;
   const monClassLates = monClassRecords.filter(r => r.status === 'late').length;
+  const monClassAbsents = monClassRecords.filter(r => r.status === 'absent').length;
   
   // Roster at risk (under 85% attendance rate)
   const monClassAtRisk = monEnrollments.filter(student => {
@@ -116,13 +142,14 @@ export default function DashboardFaculty({
     );
     const presentCount = studentRecords.filter(r => r.status === 'present').length;
     const lateCount = studentRecords.filter(r => r.status === 'late').length;
-    const rate = studentRecords.length > 0 ? Math.round(((presentCount + lateCount * 0.7) / studentRecords.length) * 100) : 100;
+    const rate = studentRecords.length > 0 ? Math.round(((presentCount + lateCount) / studentRecords.length) * 100) : 100;
     return rate < 85;
   }).length;
 
   const totalMonRecords = monClassRecords.length;
   const monClassPresentsRate = totalMonRecords > 0 ? (monClassPresents / totalMonRecords) * 100 : 0;
   const monClassLatesRate = totalMonRecords > 0 ? (monClassLates / totalMonRecords) * 100 : 0;
+  const monClassAbsentsRate = totalMonRecords > 0 ? (monClassAbsents / totalMonRecords) * 100 : 0;
   const monClassAtRiskRate = monEnrollments.length > 0 ? (monClassAtRisk / monEnrollments.length) * 100 : 0;
 
   const handleCommitFacultyAlarmUpdate = (status: 'attend' | 'cancel' | 'late') => {
@@ -167,25 +194,50 @@ export default function DashboardFaculty({
     setProfileAvatar(userProfile.avatar);
   }, [userProfile]);
 
-  // Interval timer for the broadcasted QR expiration count
+  // Interval timer for the broadcasted QR expiration count and automatic 15-sec rotation (Real-Time QR Codes!)
   React.useEffect(() => {
     let interval: any = null;
-    if (activeScreen === 'qr-generator' && timeLeft > 0) {
+    let rotationInterval: any = null;
+
+    if (activeScreen === 'qr-generator' && timeLeft > 0 && qrToken && qrToken !== 'STANDBY' && qrToken !== 'EXPIRED') {
+      // 1. Expiration Countdown (ticks every 1 second)
       interval = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            setQrToken('EXPIRED_SESSION_' + Math.random().toString(36).substring(4, 10).toUpperCase());
-            speakText("Broadcast session expired. Click generate other key to reload.", accessibility.readAloud);
+            setQrToken('EXPIRED');
+            speakText("Broadcast session expired.", accessibility.readAloud);
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
+
+      // 2. Dynamic Real-time Token Rotation (rotates every 15 seconds to ensure robust, secure scanning)
+      rotationInterval = setInterval(() => {
+        const now = new Date();
+        const daysMap = ['A', 'MW', 'TTh', 'MW', 'TTh', 'FS', 'FS'];
+        const todayGroup = daysMap[now.getDay()];
+        const activeMatch = classes.find(c => c.days.includes(todayGroup) || c.days.includes('A')) || classes.find(c => c.id === activeQRClass) || classes[0];
+        
+        if (activeMatch) {
+          const generatedKey = 'CODE_' + activeMatch.code.toUpperCase() + '_' + Math.random().toString(36).substring(4, 9).toUpperCase();
+          
+          // Propagate fresh security key rotation to parent class state
+          onEditClass({
+            ...activeMatch,
+            qrToken: generatedKey,
+            qrGeneratedAt: Date.now()
+          });
+          setQrToken(generatedKey);
+        }
+      }, 15000);
     }
+
     return () => {
       if (interval) clearInterval(interval);
+      if (rotationInterval) clearInterval(rotationInterval);
     };
-  }, [activeScreen, timeLeft]);
+  }, [activeScreen, timeLeft, qrToken, activeQRClass]);
 
   const handleCreateNewQrToken = () => {
     setQrToken('QR_KEY_' + Math.random().toString(36).substring(4, 10).toUpperCase());
@@ -310,23 +362,57 @@ export default function DashboardFaculty({
 
           {/* Targeted Administrative Announcements */}
           {announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length > 0 && (
-            <div className="p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 text-amber-950 dark:text-amber-300 space-y-3 text-left animate-fade-in">
-              <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-550 bg-amber-500 animate-pulse" />
-                University Bulletins ({announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length})
-              </h4>
-              <div className="space-y-3 divide-y divide-amber-500/10">
-                {announcements
-                  .filter(ann => ann.target === 'all' || ann.target === 'faculty')
-                  .map((ann) => (
-                    <div key={ann.id} className="pt-3 first:pt-0">
-                      <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{ann.title}</h5>
-                      <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed font-sans">{ann.content}</p>
-                      <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-wider block mt-1 uppercase">Issued {new Date(ann.createdAt).toLocaleDateString()}</span>
-                    </div>
-                  ))}
+            isBulletinsHidden ? (
+              <div className="p-3.5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/10 flex items-center justify-between text-left animate-fade-in">
+                <div className="flex items-center gap-2.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Administrative Bulletins minimized ({announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulletinsHidden(false);
+                    speakText("University Bulletins expanded.", accessibility.readAloud);
+                  }}
+                  className="inline-flex items-center gap-1.5 py-1 px-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all cursor-pointer select-none active:scale-95"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Unhide Bulletins
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 text-amber-950 dark:text-amber-300 space-y-3 text-left animate-fade-in relative">
+                <div className="flex items-center justify-between gap-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-550 bg-amber-500 animate-pulse" />
+                    University Bulletins ({announcements.filter(ann => ann.target === 'all' || ann.target === 'faculty').length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBulletinsHidden(true);
+                      speakText("Administrative Bulletins hidden/minimized.", accessibility.readAloud);
+                    }}
+                    className="inline-flex items-center gap-1.5 py-1 px-2 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer select-none active:scale-95"
+                    title="Hide and minimize bulletins card"
+                  >
+                    <EyeOff className="w-3 h-3" />
+                    Hide
+                  </button>
+                </div>
+                <div className="space-y-3 divide-y divide-amber-500/10">
+                  {announcements
+                    .filter(ann => ann.target === 'all' || ann.target === 'faculty')
+                    .map((ann) => (
+                      <div key={ann.id} className="pt-3 first:pt-0">
+                        <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{ann.title}</h5>
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed font-sans">{ann.content}</p>
+                        <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-wider block mt-1 uppercase">Issued {new Date(ann.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )
           )}
 
           {/* High Fidelity Faculty Status & Statistics Suite */}
@@ -471,9 +557,7 @@ export default function DashboardFaculty({
                   <text x="340" y="142" fontSize="8" fill="#888">Friday</text>
                 </svg>
               </div>
-            </div>
-
-            {/* Student Performance Analytics */}
+            </div>            {/* Student Performance Analytics */}
             <div className="lg:col-span-5 p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
               <div>
                 <span className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-widest">Performance Analysis</span>
@@ -481,29 +565,61 @@ export default function DashboardFaculty({
                 <p className="text-xs text-zinc-400 leading-normal mt-0.5">Visual representation of general roster standings in term evaluations.</p>
               </div>
 
-              <div className="space-y-3.5 pt-1">
-                {[
-                  { name: 'Passing (85% - 100% attendance)', count: classes.length > 0 ? enrollments.length - 2 : 12, percent: 84, color: 'emerald' },
-                  { name: 'Borderline Range (75% - 85% attendance)', count: classes.length > 0 ? 2 : 1, percent: 11, color: 'amber' },
-                  { name: 'Warning/At-Risk (<75% attendance)', count: 0, percent: 5, color: 'red' }
-                ].map((stat, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-200">{stat.name}</span>
-                      <span className="font-mono text-zinc-400">{stat.count} students ({stat.percent}%)</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-900 overflow-hidden relative">
-                      <div 
-                        className={`h-full rounded-full ${
-                          stat.color === 'emerald' ? 'bg-emerald-500' :
-                          stat.color === 'amber' ? 'bg-amber-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${stat.percent}%` }}
-                      />
-                    </div>
+              {(() => {
+                const totalStudentsInClass = monEnrollments.length;
+                
+                const passingCount = monEnrollments.filter(st => {
+                  const recs = attendanceRecords.filter(r => r.classId === selectedMonitoringClassId && (r.studentId === st.studentId || r.studentName === st.studentName));
+                  const pres = recs.filter(r => r.status === 'present').length;
+                  const late = recs.filter(r => r.status === 'late').length;
+                  const rate = recs.length > 0 ? Math.round(((pres + late) / recs.length) * 100) : 100;
+                  return rate >= 85;
+                }).length;
+
+                const borderlineCount = monEnrollments.filter(st => {
+                  const recs = attendanceRecords.filter(r => r.classId === selectedMonitoringClassId && (r.studentId === st.studentId || r.studentName === st.studentName));
+                  const pres = recs.filter(r => r.status === 'present').length;
+                  const late = recs.filter(r => r.status === 'late').length;
+                  const rate = recs.length > 0 ? Math.round(((pres + late) / recs.length) * 100) : 100;
+                  return rate >= 75 && rate < 85;
+                }).length;
+
+                const warningCount = (totalStudentsInClass - passingCount - borderlineCount) >= 0 
+                  ? Math.max(0, totalStudentsInClass - passingCount - borderlineCount) 
+                  : 0;
+
+                const passPercent = totalStudentsInClass > 0 ? Math.round((passingCount / totalStudentsInClass) * 100) : 84;
+                const borderPercent = totalStudentsInClass > 0 ? Math.round((borderlineCount / totalStudentsInClass) * 100) : 11;
+                const warnPercent = totalStudentsInClass > 0 ? Math.max(0, 100 - passPercent - borderPercent) : 5;
+
+                const stats = [
+                  { name: 'Passing (85% - 100% attendance)', count: totalStudentsInClass > 0 ? passingCount : 4, percent: passPercent, color: 'emerald' },
+                  { name: 'Borderline Range (75% - 85% attendance)', count: totalStudentsInClass > 0 ? borderlineCount : 2, percent: borderPercent, color: 'amber' },
+                  { name: 'Warning/At-Risk (<75% attendance)', count: totalStudentsInClass > 0 ? warningCount : 1, percent: warnPercent, color: 'red' }
+                ];
+
+                return (
+                  <div className="space-y-3.5 pt-1">
+                    {stats.map((stat, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="font-bold text-zinc-700 dark:text-zinc-200">{stat.name}</span>
+                          <span className="font-mono text-zinc-400">{stat.count} students ({stat.percent}%)</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-900 overflow-hidden relative">
+                          <div 
+                            className={`h-full rounded-full ${
+                              stat.color === 'emerald' ? 'bg-emerald-500' :
+                              stat.color === 'amber' ? 'bg-amber-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${stat.percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
 
           </div>
@@ -527,20 +643,24 @@ export default function DashboardFaculty({
                       <div
                         key={cls.id}
                         onClick={() => handleOpenSubjectDetails(cls)}
-                        className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/20 dark:bg-zinc-900/30 hover:bg-zinc-100/40 dark:hover:bg-zinc-900/60 transition-all cursor-pointer text-left"
+                        className="p-5 pl-7 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs hover:shadow-md transition-all cursor-pointer text-left relative overflow-hidden group hover:border-emerald-500/30"
                       >
-                        <span className="text-[9px] font-black tracking-widest px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-bold uppercase animate-fade-in">
+                        {/* High elegance left-border ribbon accentuating the status */}
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 transition-transform duration-300 group-hover:scale-y-110" />
+                        
+                        <span className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold uppercase">
                           {cls.code}
                         </span>
-                        <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight mt-2.5 truncate">{cls.name}</h4>
                         
-                        <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-900">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
+                        <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight mt-3 truncate">{cls.name}</h4>
+                        
+                        <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-850">
+                          <span className="flex items-center gap-1 font-semibold text-zinc-650 dark:text-zinc-350">
+                            <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                             {cls.startTime}
                           </span>
-                          <span className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-zinc-700 dark:text-zinc-300 font-bold">
-                            <Users className="w-3 h-3 text-zinc-500 inline animate-pulse" /> {enrolledCount} Students
+                          <span className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg text-emerald-700 dark:text-emerald-400 font-extrabold border border-emerald-500/10">
+                            <Users className="w-3.5 h-3.5 text-emerald-500" /> {enrolledCount} Students
                           </span>
                         </div>
                       </div>
@@ -707,12 +827,14 @@ export default function DashboardFaculty({
       {/* 2. SUBJECTS & SCHEDULE EDITOR SCREEN */}
       {activeScreen === 'schedule-editor' && (
         <div className="space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -912,12 +1034,14 @@ export default function DashboardFaculty({
       {/* 3. QR CODES ATTENDANCE PASSCODE GENERATOR VIEW */}
       {activeScreen === 'qr-generator' && (
         <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm text-left">
@@ -982,13 +1106,13 @@ export default function DashboardFaculty({
               })()}
 
               {/* QR Code matrix box representation */}
-              <div className="p-6 bg-zinc-50 dark:bg-zinc-905 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col items-center justify-center space-y-4 relative">
-                <div className="p-4 bg-white dark:bg-zinc-950 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800">
+              <div className="p-4 border border-zinc-200 dark:border-zinc-850 rounded-2xl flex flex-col items-center justify-center space-y-4 relative bg-zinc-50 dark:bg-zinc-950/30">
+                <div className="p-1 bg-zinc-100 dark:bg-zinc-900 rounded-lg shadow-xs border border-zinc-200 dark:border-zinc-800">
                   {qrToken && qrToken !== 'STANDBY' && qrToken !== 'EXPIRED' ? (
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrToken)}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=1&data=${encodeURIComponent(qrToken)}`}
                       alt="ClassPulse Active Session QR Code"
-                      className="w-40 h-40 rounded object-contain border border-zinc-100 dark:border-zinc-900"
+                      className="w-40 h-40 rounded object-contain filter brightness-[0.92] contrast-125 dark:brightness-[0.78] dark:contrast-[1.10]"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
@@ -1011,9 +1135,79 @@ export default function DashboardFaculty({
                   </span>
                   
                   {qrToken !== 'STANDBY' && qrToken !== 'EXPIRED' && (
-                    <div className="text-[11px] text-zinc-450 dark:text-zinc-400 font-semibold mt-3 flex items-center justify-center gap-1 bg-zinc-100 dark:bg-zinc-900 px-3 py-1 rounded-full border border-zinc-250 dark:border-zinc-850">
-                      <Clock className="w-3.5 h-3.5 text-blue-500 animate-[spin_4s_linear_infinite]" />
-                      Class Session Expires in: <span className="font-mono text-blue-500 dark:text-blue-400 font-black ml-1 text-xs">{timeLeft}s (30m countdown)</span>
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-zinc-450 dark:text-zinc-400 font-semibold mt-3 flex items-center justify-center gap-1 bg-zinc-100 dark:bg-zinc-900 px-3 py-1 rounded-full border border-zinc-250 dark:border-zinc-850">
+                        <Clock className="w-3.5 h-3.5 text-blue-500 animate-[spin_4s_linear_infinite]" />
+                        Class Session Expires in: <span className="font-mono text-blue-500 dark:text-blue-400 font-black ml-1 text-xs">{timeLeft}s (30m countdown)</span>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const canvas = document.createElement('canvas');
+                          canvas.width = 350;
+                          canvas.height = 350;
+                          const ctx = canvas.getContext('2d');
+                          if (!ctx) return;
+                          
+                          ctx.fillStyle = '#0a0a0a';
+                          ctx.fillRect(0, 0, 350, 350);
+                          
+                          ctx.strokeStyle = '#10b981';
+                          ctx.lineWidth = 12;
+                          ctx.strokeRect(20, 20, 310, 310);
+                          
+                          ctx.fillStyle = '#ffffff';
+                          ctx.font = 'bold 16px "Inter", sans-serif';
+                          ctx.textAlign = 'center';
+                          ctx.fillText('CLASSPULSE OFFLINE PASS', 175, 55);
+                          
+                          ctx.fillStyle = '#10b981';
+                          ctx.font = '12px "JetBrains Mono", monospace';
+                          ctx.fillText(qrToken, 175, 305);
+                          
+                          const drawFinder = (cx: number, cy: number) => {
+                            ctx.fillStyle = '#10b981';
+                            ctx.fillRect(cx, cy, 32, 32);
+                            ctx.fillStyle = '#0a0a0a';
+                            ctx.fillRect(cx + 4, cy + 4, 24, 24);
+                            ctx.fillStyle = '#10b981';
+                            ctx.fillRect(cx + 8, cy + 8, 16, 16);
+                          };
+                          
+                          drawFinder(85, 85);
+                          drawFinder(85 + 180 - 32, 85);
+                          drawFinder(85, 85 + 180 - 32);
+                          
+                          ctx.fillStyle = '#ffffff';
+                          let seed = 0;
+                          for (let i = 0; i < qrToken.length; i++) {
+                            seed += qrToken.charCodeAt(i);
+                          }
+                          const cols = 21;
+                          const dot = 180 / cols;
+                          for (let r = 0; r < cols; r++) {
+                            for (let c = 0; c < cols; c++) {
+                              if ((r < 6 && c < 6) || (r < 6 && c > cols - 7) || (r > cols - 7 && c < 6)) {
+                                continue;
+                              }
+                              const val = Math.sin(r * 45.3 + c * 89.1 + seed);
+                              if (val > -0.15) {
+                                ctx.fillRect(85 + c * dot, 85 + r * dot, dot - 1, dot - 1);
+                              }
+                            }
+                          }
+                          
+                          const link = document.createElement('a');
+                          link.download = `ClassPulse_${qrToken}_offline.png`;
+                          link.href = canvas.toDataURL('image/png');
+                          link.click();
+                          speakText("Class token QR code exported as offline image file successfully.", accessibility.readAloud);
+                        }}
+                        className="py-1 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:text-emerald-500 rounded-lg text-[10px] font-extrabold uppercase tracking-widest border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer w-full"
+                      >
+                        📥 Export / Download Offline QR Code
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1072,23 +1266,172 @@ export default function DashboardFaculty({
       {/* 4. NOTIFICATIONS VIEW */}
       {activeScreen === 'notifications' && (
         <div className="max-w-xl mx-auto space-y-4 animate-fade-in text-left">
-          <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-            Notification logs
-          </h2>
-          <div className="space-y-2.5">
-            {notifications.map((notif) => (
-              <div 
-                key={notif.id}
-                className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 text-left"
+          <div className="pb-1">
+            <button 
+              onClick={() => setScreen('dashboard')} 
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
+            >
+              ←
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-900 pb-3">
+            <div>
+              <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                <BellRing className="w-5 h-5 text-emerald-500" />
+                Notification logs
+              </h2>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
+            </div>
+          </div>
+
+          {/* Search and Classification Filters Block */}
+          <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-405 dark:text-zinc-500" />
+              <input
+                type="text"
+                value={notifSearch}
+                onChange={(e) => setNotifSearch(e.target.value)}
+                placeholder="Search notification logs..."
+                className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs font-medium placeholder-zinc-400 text-zinc-850 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              {notifSearch && (
+                <button
+                  type="button"
+                  onClick={() => setNotifSearch('')}
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Structured Classification Tabs */}
+            <div className="grid grid-cols-3 gap-1.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('all');
+                  speakText("Showing all notifications", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'all'
+                    ? 'bg-neutral-900 dark:bg-zinc-800 text-white shadow-sm font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-emerald-550 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-555">{notif.type}</span>
-                  <span className="text-[9px] text-zinc-400 uppercase font-bold">{notif.timestamp}</span>
+                <span>All</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-zinc-200 dark:bg-zinc-700 text-zinc-650 dark:text-zinc-200 font-bold">
+                  {notifications.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('alerts');
+                  speakText("Showing alerts and warnings only", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'alerts'
+                    ? 'bg-amber-500 text-neutral-950 font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
+              >
+                <span>⚠️ Alerts</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-amber-500/10 text-amber-900 dark:text-amber-200 font-bold">
+                  {notifications.filter(n => n.type === 'alert' || n.type === 'warning').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('updates');
+                  speakText("Showing standard bulletins and status updates only", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'updates'
+                    ? 'bg-emerald-600 text-white font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
+              >
+                <span>✅ Updates</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
+                  {notifications.filter(n => n.type === 'info' || n.type === 'success').length}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* List Section */}
+          <div className="space-y-2.5">
+            {(() => {
+              // Apply active classification search & type filter logic
+              const filtered = notifications.filter(notif => {
+                const matchesSearch = notif.title.toLowerCase().includes(notifSearch.toLowerCase()) || 
+                                     notif.message.toLowerCase().includes(notifSearch.toLowerCase());
+                
+                if (!matchesSearch) return false;
+
+                if (notifFilter === 'alerts') {
+                  return notif.type === 'alert' || notif.type === 'warning';
+                }
+                if (notifFilter === 'updates') {
+                  return notif.type === 'info' || notif.type === 'success';
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="p-8 text-center rounded-2xl bg-zinc-50 dark:bg-zinc-950/20 border border-zinc-150 dark:border-zinc-850 space-y-2">
+                    <p className="text-xs text-zinc-400 font-bold">No notifications match your active search filter.</p>
+                    <button
+                      type="button"
+                      onClick={() => { setNotifSearch(''); setNotifFilter('all'); }}
+                      className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                );
+              }
+
+              return filtered.map((notif) => (
+                <div 
+                  key={notif.id}
+                  className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-850 flex items-start gap-3.5 text-left shadow-xs transition-transform hover:translate-x-0.5"
+                >
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    notif.type === 'alert' ? 'bg-red-500/10 text-red-500' :
+                    notif.type === 'warning' ? 'bg-amber-500/10 text-amber-550' :
+                    notif.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
+                    'bg-blue-500/10 text-blue-500'
+                  }`}>
+                    <BellRing className="w-3.5 h-3.5 animate-pulse" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2.5">
+                      <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                        {notif.title}
+                        {!notif.read && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        )}
+                      </h4>
+                      <span className="text-[9px] font-mono text-zinc-400 tracking-wider font-semibold uppercase">{notif.timestamp}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-450 dark:text-zinc-400 mt-1 leading-normal">
+                      {notif.message}
+                    </p>
+                  </div>
                 </div>
-                <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 mt-2">{notif.title}</h4>
-                <p className="text-[11px] text-zinc-400 mt-1">{notif.message}</p>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -1096,12 +1439,14 @@ export default function DashboardFaculty({
       {/* 5. PROFILE TAB */}
       {activeScreen === 'profile' && (
         <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
@@ -1226,7 +1571,111 @@ export default function DashboardFaculty({
             classes={classes} 
             enrollments={enrollments} 
             accessibility={accessibility} 
+            onBack={() => setScreen('dashboard')}
           />
+        </div>
+      )}
+
+      {/* 5B. EXCUSE LETTERS INBOX VIEW */}
+      {activeScreen === 'excuse-inbox' && (
+        <div className="space-y-6 animate-fade-in text-left">
+          <div>
+            <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+              <Inbox className="w-5.5 h-5.5 text-emerald-500 animate-pulse" />
+              Excuse letters Inbox
+            </h2>
+            <p className="text-xs text-zinc-400">Review filed excuse applications and declare decisions of validity on students' records.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">Pending Review</span>
+              <p className="text-2xl font-black text-amber-500 mt-1">{excuseLetters.filter(l => l.status === 'pending').length}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">Declared Valid</span>
+              <p className="text-2xl font-black text-emerald-500 mt-1">{excuseLetters.filter(l => l.status === 'valid' || l.status === 'approved').length}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+              <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">Declared Invalid</span>
+              <p className="text-2xl font-black text-red-500 mt-1">{excuseLetters.filter(l => l.status === 'invalid' || l.status === 'rejected').length}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {excuseLetters.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-white dark:bg-zinc-950 border border-dashed border-zinc-200 dark:border-zinc-850 text-zinc-500 text-xs">
+                No excuse letters have been filed by students yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {excuseLetters.map(letter => (
+                  <div key={letter.id} className="p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm space-y-4 transition-all w-full">
+                    
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-zinc-900 dark:text-zinc-100">{letter.studentName}</span>
+                          <span className="text-[9px] font-mono text-zinc-400 py-0.5 px-2 bg-zinc-100 dark:bg-zinc-900 rounded-full">{letter.studentId || 'STU-OFFICIAL'}</span>
+                          <span className="text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/10 px-2 py-0.5 rounded-full">{letter.className}</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-1">Duration: <span className="font-semibold text-zinc-850 dark:text-zinc-200">{letter.startDate}</span> to <span className="font-semibold text-zinc-850 dark:text-zinc-200">{letter.endDate}</span></p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 self-start">
+                        <span className="text-[9px] font-bold text-zinc-400 uppercase">Decision Status:</span>
+                        <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full ${
+                          letter.status === 'approved' || letter.status === 'valid' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                          letter.status === 'rejected' || letter.status === 'invalid' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                          'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                        }`}>
+                          {letter.status === 'approved' || letter.status === 'valid' ? 'valid' : letter.status === 'rejected' || letter.status === 'invalid' ? 'invalid' : letter.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Filed Reason & Explanations</p>
+                      <p className="text-xs text-zinc-700 dark:text-zinc-300 italic mt-1.5 font-sans leading-relaxed">"{letter.reason}"</p>
+                      {letter.attachmentName && (
+                        <div className="flex items-center gap-2 mt-3 p-2 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-xl w-fit cursor-pointer">
+                          <span className="text-[10px] text-emerald-500 font-mono">📎 {letter.attachmentName}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2.5 pt-1">
+                      {onUpdateExcuseStatus && (
+                        <>
+                          <button
+                            onClick={() => onUpdateExcuseStatus(letter.id, 'valid')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-1.5 transition-all ${
+                              letter.status === 'valid' || letter.status === 'approved'
+                                ? 'bg-emerald-500 text-black shadow-sm scale-95'
+                                : 'bg-transparent border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                            }`}
+                          >
+                            ✓ Valid
+                          </button>
+                          <button
+                            onClick={() => onUpdateExcuseStatus(letter.id, 'invalid')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-1.5 transition-all ${
+                              letter.status === 'invalid' || letter.status === 'rejected'
+                                ? 'bg-red-500 text-white shadow-sm scale-95'
+                                : 'bg-transparent border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                            }`}
+                          >
+                            ✗ Invalid
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1236,12 +1685,14 @@ export default function DashboardFaculty({
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="flex gap-2">
+              <div className="pb-1">
                 <button 
                   onClick={() => setScreen('dashboard')} 
-                  className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+                  title="Back"
                 >
-                  ← Back to Dashboard
+                  ←
                 </button>
               </div>
               <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2 mt-3">
@@ -1288,7 +1739,7 @@ export default function DashboardFaculty({
                 <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
                   <h3 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mb-4 tracking-tight flex items-center justify-between">
                     <span>Class Enrolled Roster ({monEnrollments.length})</span>
-                    <span className="text-[10px] font-black uppercase text-zinc-400">Attendance status</span>
+                    <span className="text-[10px] font-black uppercase text-zinc-400">Attendance control panel</span>
                   </h3>
 
                   {monEnrollments.length === 0 ? (
@@ -1308,84 +1759,128 @@ export default function DashboardFaculty({
                         const abs = studentRecords.filter(r => r.status === 'absent').length;
 
                         const total = studentRecords.length;
-                        const rate = total > 0 ? Math.round(((pres + late * 0.75) / total) * 105) : 100;
+                        const rate = total > 0 ? Math.round(((pres + late) / total) * 100) : 100;
                         const rateClamped = rate > 100 ? 100 : rate;
                         const isUnderMonitoring = rateClamped < 85;
 
                         return (
-                          <div key={student.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
-                            <div className="flex items-center gap-3">
-                              <img 
-                                src={student.studentAvatar} 
-                                alt={student.studentName} 
-                                className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
-                              />
-                              <div>
-                                <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
-                                  <span>{student.studentName}</span>
-                                  {(() => {
-                                    // Calculate precise warning check
-                                    const studentRecords = attendanceRecords.filter(
-                                      r => r.classId === activeMonClass.id && 
-                                      (r.studentId === student.studentId || r.studentName === student.studentName)
-                                    );
-                                    const absentsForClass = studentRecords.filter(r => r.status === 'absent');
-                                    const countAbsentsForClass = absentsForClass.length;
+                          <div key={student.id} className="py-4 flex flex-col text-left">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div className="flex items-center gap-3">
+                                <img 
+                                  src={student.studentAvatar} 
+                                  alt={student.studentName} 
+                                  className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
+                                />
+                                <div>
+                                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
+                                    <span>{student.studentName}</span>
+                                    {(() => {
+                                      // Calculate precise warning check
+                                      const countAbsentsForClass = abs;
 
-                                    let maxConsecutive = 0;
-                                    let currConsecutive = 0;
-                                    const sortedRecs = [...studentRecords].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                                    for (const r of sortedRecs) {
-                                      if (r.status === 'absent') {
-                                        currConsecutive++;
-                                        if (currConsecutive > maxConsecutive) currConsecutive = maxConsecutive;
-                                      } else {
-                                        currConsecutive = 0;
+                                      let maxConsecutive = 0;
+                                      let currConsecutive = 0;
+                                      const sortedRecs = [...studentRecords].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                      for (const r of sortedRecs) {
+                                        if (r.status === 'absent') {
+                                          currConsecutive++;
+                                          if (currConsecutive > maxConsecutive) maxConsecutive = currConsecutive;
+                                        } else {
+                                          currConsecutive = 0;
+                                        }
                                       }
-                                    }
 
-                                    if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                                      if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                                        return (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-red-500 bg-red-500/10 border border-red-500/15">
+                                            🚫 Dropped
+                                          </span>
+                                        );
+                                      } else if (countAbsentsForClass >= 3) {
+                                        return (
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-amber-555 bg-amber-500/10 border border-amber-500/15">
+                                            ⚠️ Warning
+                                          </span>
+                                        );
+                                      }
                                       return (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-red-500 bg-red-500/10 border border-red-500/15">
-                                          🚫 Dropped
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-emerald-500 bg-emerald-500/10 border border-emerald-505">
+                                          Good Stand
                                         </span>
                                       );
-                                    } else if (countAbsentsForClass >= 3) {
-                                      return (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-amber-550 bg-amber-500/10 border border-amber-500/15">
-                                          ⚠️ Warning
-                                        </span>
-                                      );
-                                    }
-                                    return (
-                                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-emerald-500 bg-emerald-500/10 border border-emerald-505">
-                                        Good Stand
-                                      </span>
-                                    );
-                                  })()}
-                                </h4>
-                                <p className="text-[10px] text-zinc-455 mt-0.5 font-mono">{student.studentId} • Enrolled {student.enrolledAt}</p>
+                                    })()}
+                                  </h4>
+                                  <p className="text-[10px] text-zinc-455 mt-0.5 font-mono">{student.studentId} • Enrolled {student.enrolledAt}</p>
+                                </div>
+                              </div>
+
+                              {/* Attendance figures logs & edit trigger */}
+                              <div className="flex items-center gap-6 self-end sm:self-auto shrink-0">
+                                <div className="flex gap-4 text-center font-mono">
+                                  <div>
+                                    <p className="text-[8px] font-bold text-zinc-400">PRESENT(S)</p>
+                                    <p className="text-xs font-black text-emerald-500">{pres + late}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[8px] font-bold text-zinc-400">ABSENT(S)</p>
+                                    <p className="text-xs font-black text-ref-500 text-red-500">{abs}</p>
+                                  </div>
+                                  <div className="p-0 border-r border-zinc-200 dark:border-zinc-800 h-6 self-center" />
+                                  <div>
+                                    <p className="text-[8px] font-bold text-zinc-400">PERCENT RATE</p>
+                                    <p className={`text-xs font-black ${isUnderMonitoring ? 'text-red-500 font-extrabold' : 'text-zinc-800 dark:text-zinc-250'}`}>{rateClamped}%</p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
+                                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[10px] font-black uppercase text-zinc-650 dark:text-zinc-300 transition-all cursor-pointer"
+                                >
+                                  {expandedStudentId === student.id ? 'Close' : 'Edit Logs'}
+                                </button>
                               </div>
                             </div>
 
-                            {/* Attendance figures logs */}
-                            <div className="flex items-center gap-6 self-end sm:self-auto">
-                              <div className="flex gap-4 text-center font-mono">
-                                <div>
-                                  <p className="text-[8px] font-bold text-zinc-400">PRESENT(S)</p>
-                                  <p className="text-xs font-black text-emerald-500">{pres}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[8px] font-bold text-zinc-400">LATE(S)</p>
-                                  <p className="text-xs font-black text-amber-500">{late}</p>
-                                </div>
-                                <div className="p-0 border-r border-zinc-200 dark:border-zinc-800 h-6 self-center" />
-                                <div>
-                                  <p className="text-[8px] font-bold text-zinc-400">PERCENT RATE</p>
-                                  <p className={`text-xs font-black ${isUnderMonitoring ? 'text-red-500 font-extrabold' : 'text-zinc-800 dark:text-zinc-250'}`}>{rateClamped}%</p>
-                                </div>
+                            {/* Collapsible logs correction panel */}
+                            {expandedStudentId === student.id && (
+                              <div className="mt-4 pl-14 pt-4 border-t border-zinc-100/60 dark:border-zinc-900/60 grid grid-cols-1 gap-2.5 animate-scale-up">
+                                <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest font-mono">Attendance Correction Ledger</p>
+                                {studentRecords.length === 0 ? (
+                                  <p className="text-[10px] text-zinc-400 italic">No attendance timestamps recorded yet.</p>
+                                ) : (
+                                  <div className="grid grid-cols-1 gap-1.5">
+                                    {studentRecords.map(rec => (
+                                      <div key={rec.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-150 dark:border-zinc-850 w-full hover:border-emerald-500/10 transition-all">
+                                        <div className="text-left font-mono">
+                                          <span className="text-[10px] font-extrabold text-zinc-800 dark:text-zinc-200">{rec.date}</span>
+                                          <span className="text-[9px] text-zinc-400 ml-2">({rec.time})</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {(['present', 'late', 'absent'] as const).map(statusOpt => (
+                                            <button
+                                              key={statusOpt}
+                                              type="button"
+                                              onClick={() => onUpdateAttendanceRecord && onUpdateAttendanceRecord(rec.id, statusOpt)}
+                                              className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase cursor-pointer transition-all ${
+                                                rec.status === statusOpt
+                                                  ? statusOpt === 'present' ? 'bg-emerald-500 text-black font-extrabold scale-95' :
+                                                    statusOpt === 'late' ? 'bg-amber-500 text-black font-extrabold scale-95' : 'bg-red-500 text-white font-extrabold scale-95'
+                                                  : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-90 w-fit dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+                                              }`}
+                                            >
+                                              {statusOpt}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            </div>
+                            )}
+
                           </div>
                         );
                       })}
@@ -1428,8 +1923,18 @@ export default function DashboardFaculty({
 
                       <div>
                         <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 mb-1">
+                          <span>ABSENT TOTALS</span>
+                          <span className="font-mono text-red-500 font-extrabold">{monClassAbsents} Logs</span>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-500 rounded-full" style={{ width: `${Math.min(100, monClassAbsentsRate)}%` }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 mb-1">
                           <span>STUDENTS AT RISK</span>
-                          <span className="font-mono text-red-500 font-extrabold">{monClassAtRisk} Students</span>
+                          <span className="font-mono text-red-400 font-extrabold">{monClassAtRisk} Students</span>
                         </div>
                         <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
                           <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.min(100, monClassAtRiskRate)}%` }} />

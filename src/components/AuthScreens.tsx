@@ -105,17 +105,17 @@ export default function AuthScreens({ onLoginSuccess, accessibility }: AuthScree
       <div className="mb-7 text-center z-10 space-y-2">
         <div className="relative inline-block group">
           <span className="absolute -inset-1.5 rounded-2.5xl bg-emerald-500/20 group-hover:bg-emerald-500/30 blur-xs transition-all duration-300" />
-          <div className="relative w-14 h-14 rounded-2.5xl bg-emerald-500 text-black flex items-center justify-center font-black text-2xl mx-auto shadow-xl shadow-emerald-500/10 transform rotate-3 hover:rotate-0 transition-transform">
+          <div className="relative w-14 h-14 rounded-2.5xl bg-emerald-500 text-black flex items-center justify-center font-bold text-2xl mx-auto shadow-xl shadow-emerald-500/15 transform rotate-3 hover:rotate-0 transition-transform">
             <Activity className="w-7 h-7 stroke-[2.5]" />
           </div>
         </div>
-        <div className="pt-2">
-          <h1 className="text-3.5xl font-black tracking-tight text-zinc-800 dark:text-zinc-105 uppercase">
+        <div className="pt-2 mx-auto max-w-sm">
+          <h1 className="text-3xl font-black tracking-tight text-zinc-850 dark:text-zinc-100 uppercase">
             Class<span className="text-emerald-500 font-extrabold">Pulse</span>
           </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 font-bold flex items-center justify-center gap-1.5 uppercase tracking-wider">
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 font-bold flex items-center justify-center gap-1.5 uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-            Smart Schedule & Attendance Tracking
+            Mindanao State University • Attendance Suite
           </p>
         </div>
       </div>
@@ -127,35 +127,36 @@ export default function AuthScreens({ onLoginSuccess, accessibility }: AuthScree
         exit={{ opacity: 0, y: -30, scale: 0.98 }}
         transition={{ type: "spring", stiffness: 100, damping: 15 }}
         whileHover={{ boxShadow: "0 20px 40px -15px rgba(16, 185, 129, 0.08)" }}
-        className="w-full max-w-md p-8 rounded-[2rem] border bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] transition-all duration-300 z-10 text-left relative overflow-hidden group"
+        className="w-full max-w-md p-8 rounded-[2rem] border bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] transition-all duration-300 z-10 text-left relative overflow-hidden group"
       >
-        <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-500 opacity-60" />
+        <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-400 opacity-90" />
         
         {isLoginView ? (
           /* ================= LOGIN SCREEN ================= */
-          <div className="space-y-6">
+          <div className="space-y-5">
             <div className="text-left space-y-1">
-              <h2 className="text-xl font-black tracking-tight text-zinc-900 dark:text-zinc-100">Sign In</h2>
-              <p className="text-xs text-zinc-450 dark:text-zinc-450">Log in to check schedules and track attendance.</p>
+              <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-zinc-100">Portal Authentication</h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">ClassPulse MSU Marawi Campus schedule & secure attendance tracking ledger.</p>
             </div>
 
             {/* Google Fast Registration Bar */}
             <div className="pt-1">
               <button
                 type="button"
+                id="google-signin-btn"
                 onClick={() => {
-                  speakText("Fast Registration via Google account initiated.", accessibility.readAloud);
+                  speakText("Fast Authentication via MSU Google Account approved.", accessibility.readAloud);
                   onLoginSuccess('student', 'Farhan Makil', 'farhanmakil15@gmail.com');
                 }}
                 className="w-full py-3 px-4 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-200 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-3 cursor-pointer shadow-xs hover:shadow-sm"
               >
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" id="google-icon-svg">
                   <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.41 15 0 12 0 7.35 0 3.37 2.67 1.39 6.56l3.86 3C6.18 6.77 8.85 5.04 12 5.04z" />
                   <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.43a5.52 5.52 0 0 1-2.4 3.61l3.71 2.88c2.17-2 3.75-4.94 3.75-8.64z" />
                   <path fill="#FBBC05" d="M5.25 14.56A7.12 7.12 0 0 1 4.8 12c0-.88.15-1.74.45-2.56L1.39 6.56A11.95 11.95 0 0 0 0 12c0 2.12.55 4.12 1.52 5.88l3.73-3.32z" />
                   <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.71-2.88c-1.03.69-2.35 1.1-4.22 1.1-3.15 0-5.82-1.73-6.76-4.52l-3.86 3C3.37 21.33 7.35 24 12 24z" />
                 </svg>
-                Continue with Google
+                Continue with University Google Account
               </button>
             </div>
 
@@ -233,6 +234,22 @@ export default function AuthScreens({ onLoginSuccess, accessibility }: AuthScree
                 <ChevronRight className="w-4 h-4 stroke-[2.5]" />
               </button>
             </form>
+
+            <div className="text-center pt-1.5">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Need an academic profile?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoginView(false);
+                    speakText("Navigating to Account Creation Ledger.", accessibility.readAloud);
+                  }}
+                  className="text-emerald-550 dark:text-emerald-400 font-extrabold hover:underline cursor-pointer"
+                >
+                  Create Account
+                </button>
+              </p>
+            </div>
 
             {/* Quick Demo account switcher panel */}
             <div className="pt-5 border-t border-zinc-200 dark:border-zinc-800 text-left space-y-3">

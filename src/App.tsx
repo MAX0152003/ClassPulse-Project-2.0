@@ -8,7 +8,8 @@ import {
   AccessibilityConfig, 
   FacultyStatus, 
   Enrollment,
-  Announcement
+  Announcement,
+  LeaveRequest
 } from './types';
 import { 
   INITIAL_CLASSES, 
@@ -94,13 +95,49 @@ export default function App() {
 
   const [notifications, setNotifications] = React.useState<AppNotification[]>(() => {
     const cached = safeStorage.getItem('cp_notifications');
-    return cached ? JSON.parse(cached) : INITIAL_NOTIFICATIONS;
+    const raw: AppNotification[] = cached ? JSON.parse(cached) : INITIAL_NOTIFICATIONS;
+    const seen = new Set<string>();
+    return raw.filter(n => {
+      if (!n || !n.id || seen.has(n.id)) return false;
+      seen.add(n.id);
+      return true;
+    });
   });
 
   const [facultyStatuses, setFacultyStatuses] = React.useState<FacultyStatus[]>(() => {
     const cached = safeStorage.getItem('cp_faculty_statuses');
     return cached ? JSON.parse(cached) : INITIAL_FACULTY_STATUSES;
   });
+
+  const [excuseLetters, setExcuseLetters] = React.useState<LeaveRequest[]>(() => {
+    const cached = safeStorage.getItem('classpulse_student_leaves');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [
+      {
+        id: 'LV-491',
+        studentId: '2023-10492',
+        studentName: 'Jose Rizal',
+        classId: 'class-1',
+        className: 'Introduction to Computer Science',
+        startDate: '2026-06-12',
+        endDate: '2026-06-14',
+        reason: 'Severe medical flu condition with doctor confirmation.',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        attachmentName: 'medical_certificate.pdf'
+      }
+    ];
+  });
+
+  React.useEffect(() => {
+    safeStorage.setItem('classpulse_student_leaves', JSON.stringify(excuseLetters));
+  }, [excuseLetters]);
 
   const [accessibility, setAccessibility] = React.useState<AccessibilityConfig>(() => {
     const cached = safeStorage.getItem('cp_accessibility');
@@ -290,7 +327,7 @@ export default function App() {
         
         // Add a notification toast dynamically
         const newNotif: AppNotification = {
-          id: 'notif-sync-' + Date.now(),
+          id: 'notif-sync-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
           title: 'Offline records synchronized',
           message: 'Local logs for schedules and scan codes successfully merged into cloud registry.',
           timestamp: 'Just Now',
@@ -352,7 +389,7 @@ export default function App() {
     );
 
     if (!isAlreadyEnrolled && user && user.role === 'student') {
-      const newEnrolID = 'enr-' + Date.now();
+      const newEnrolID = 'enr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
       const newEnrollmentRecord: Enrollment = {
         id: newEnrolID,
         studentId: user.studentId || '2023-10492',
@@ -367,7 +404,7 @@ export default function App() {
 
       // Trigger educational success toast
       const automaticNotif: AppNotification = {
-        id: 'notif-autoenr-' + Date.now(),
+        id: 'notif-autoenr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
         title: 'Auto-Enrolled in Subject',
         message: `System scan verified: You were not joined in ${matchedClass.code} (${matchedClass.name}). Automatically created student enrollment ledger record in system table successfully!`,
         timestamp: 'Just Now',
@@ -383,7 +420,7 @@ export default function App() {
     const todayISO = new Date().toISOString().split('T')[0];
 
     const newRecord: AttendanceRecord = {
-      id: 'rec-' + Date.now(),
+      id: 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
       classId,
       className: matchedClass.name,
       classCode: matchedClass.code,
@@ -404,7 +441,7 @@ export default function App() {
       : `Checked into ${matchedClass.code} successfully as present.`;
 
     const newNotif: AppNotification = {
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
       title: status === 'late' ? 'Checked in late' : 'Checked In successfully',
       message: msg,
       timestamp: 'Just Now',
@@ -453,13 +490,13 @@ export default function App() {
   const handleAddClass = (newClass: Omit<ClassSession, 'id'>) => {
     const freshClass: ClassSession = {
       ...newClass,
-      id: 'class-' + Date.now(),
+      id: 'class-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
     };
     setClasses(prev => [freshClass, ...prev]);
 
     // Add alert
     const newNotif: AppNotification = {
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
       title: 'Class schedule added',
       message: `Course ${freshClass.code} - ${freshClass.name} added to visual registries.`,
       timestamp: 'Just Now',
@@ -497,7 +534,7 @@ export default function App() {
     };
 
     const newNotif: AppNotification = {
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
       title: notifTitle,
       message: statusMessages[status],
       timestamp: 'Just Now',
@@ -505,6 +542,44 @@ export default function App() {
       read: false
     };
     setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  // Shared Attendance Correction Action
+  const handleUpdateAttendanceRecord = (recordId: string, status: 'present' | 'late' | 'absent') => {
+    setAttendanceRecords(prev => prev.map(rec => rec.id === recordId ? { ...rec, status } : rec));
+    
+    // Find record context for logging
+    const target = attendanceRecords.find(r => r.id === recordId);
+    if (target) {
+      const newNotif: AppNotification = {
+        id: 'notif-corr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+        title: 'Attendance Corrected',
+        message: `Status corrected: Student ${target.studentName || 'Record'} is now marked as ${status.toUpperCase()} in ${target.classCode}.`,
+        timestamp: 'Just Now',
+        type: 'info',
+        read: false
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    }
+  };
+
+  // Shared Excuse Status validation Action
+  const handleUpdateExcuseStatus = (id: string, status: 'pending' | 'valid' | 'invalid' | 'approved' | 'rejected') => {
+    const finalStatus = status === 'approved' || status === 'valid' ? 'valid' : status === 'rejected' || status === 'invalid' ? 'invalid' : 'pending';
+    setExcuseLetters(prev => prev.map(ex => ex.id === id ? { ...ex, status: finalStatus as any } : ex));
+    
+    const target = excuseLetters.find(e => e.id === id);
+    if (target) {
+      const newNotif: AppNotification = {
+        id: 'notif-exced-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+        title: 'Excuse Decision Logged',
+        message: `Excuse Letter ${id} (Student: ${target.studentName}) marked as ${finalStatus.toUpperCase()}.`,
+        timestamp: 'Just Now',
+        type: 'success',
+        read: false
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    }
   };
 
   // Clean, high density layout container matching Obsidian ClassPulse vibe
@@ -542,6 +617,7 @@ export default function App() {
             userName={user.name}
             userAvatar={user.avatar}
             unreadNotifications={notifications.filter(n => !n.read).length}
+            pendingExcuseCount={excuseLetters.filter(e => e.status === 'pending').length}
             accessibility={accessibility}
           />
 
@@ -553,8 +629,12 @@ export default function App() {
               
               {/* Left Header Context title display matching image theme roles */}
               <div className="flex items-center gap-3 text-left">
-                <span className="text-xs font-black uppercase tracking-widest px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-full">
-                  {user.role} workspace
+                <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border shadow-xs ${
+                  user.role === 'student' ? 'bg-[#03213D] text-white border-[#03213D]/20' :
+                  user.role === 'faculty' ? 'bg-emerald-600 text-white border-emerald-500/20' :
+                  'bg-[#CC762A] text-white border-[#CC762A]/20'
+                }`}>
+                  {user.role === 'student' ? 'Student' : user.role === 'faculty' ? 'Faculty' : 'Admin'}
                 </span>
 
                 {/* Offline state label badge */}
@@ -648,6 +728,8 @@ export default function App() {
                   onRecordAttendance={handleRecordAttendance}
                   onUpdateProfile={handleUpdateProfile}
                   announcements={announcements}
+                  excuseLetters={excuseLetters}
+                  onAddExcuseLetter={(newReq: any) => setExcuseLetters(prev => [newReq, ...prev])}
                 />
               )}
 
@@ -669,6 +751,9 @@ export default function App() {
                   facultyStatuses={facultyStatuses}
                   onUpdateProfile={handleUpdateProfile}
                   announcements={announcements}
+                  excuseLetters={excuseLetters}
+                  onUpdateExcuseStatus={handleUpdateExcuseStatus}
+                  onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
                 />
               )}
 
@@ -687,6 +772,7 @@ export default function App() {
                   onUpdateAnnouncements={setAnnouncements}
                   userProfile={user}
                   onUpdateProfile={handleUpdateProfile}
+                  onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
                 />
               )}
 

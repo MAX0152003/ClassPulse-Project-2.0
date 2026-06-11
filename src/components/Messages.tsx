@@ -23,6 +23,7 @@ interface MessagesProps {
   classes: ClassSession[];
   enrollments: Enrollment[];
   accessibility: { theme: 'light' | 'dark'; readAloud: boolean };
+  onBack?: () => void;
 }
 
 interface EnrichedChatMessage extends ChatMessage {
@@ -31,7 +32,7 @@ interface EnrichedChatMessage extends ChatMessage {
   attachmentFile?: { name: string; size: string };
 }
 
-export default function Messages({ userProfile, classes, enrollments, accessibility }: MessagesProps) {
+export default function Messages({ userProfile, classes, enrollments, accessibility, onBack }: MessagesProps) {
   const [messages, setMessages] = useState<EnrichedChatMessage[]>(() => {
     const cached = localStorage.getItem('cp_chat_messages_v2');
     if (cached) {
@@ -78,7 +79,6 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
     ];
   });
 
-  const [activeTab, setActiveTab] = useState<'direct' | 'class-channel'>('class-channel');
   const [activeContactId, setActiveContactId] = useState<string>('');
   const [inputText, setInputText] = useState('');
   
@@ -165,110 +165,28 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
 
   // Set initial contact or channel
   useEffect(() => {
-    if (activeTab === 'direct' && contacts.length > 0 && !activeContactId) {
-      setActiveContactId(contacts[0].id);
-    } else if (activeTab === 'class-channel' && channels.length > 0 && !activeContactId) {
-      setActiveContactId(channels[0].id);
-    }
-  }, [activeTab, contacts, channels]);
-
-  // ACTIVE RECURRENT LIVE CHAT SIMULATION
-  // To make it look like a real live collaborative academic lobby!
-  useEffect(() => {
-    if (activeTab !== 'class-channel' || !activeContactId) return;
-
-    const interval = setInterval(() => {
-      // 30% chance every 14 seconds that someone else says something in the group class channel
-      if (Math.random() > 0.4) return;
-
-      const matchedClass = channels.find(c => c.id === activeContactId);
-      if (!matchedClass) return;
-
-      const randomStudents = [
-        { name: 'Rachel Green', id: 'stu-991', role: 'student', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80' },
-        { name: 'John Doe', id: '2023-10492', role: 'student', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80' },
-        { name: 'Alice Smith', id: 'usr-2', role: 'student', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&q=80' },
-        { name: 'Farhan Makil', id: 'stu-102', role: 'student', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80' }
-      ].filter(st => st.name !== userProfile.name);
-
-      if (randomStudents.length === 0) return;
-      const chatter = randomStudents[Math.floor(Math.random() * randomStudents.length)];
-
-      const studentPhrases = [
-        "Hey everyone, are we meeting in the campus lab or the regular classroom today?",
-        "Dr. Khan just declared that consultation hours are now open for project syncs.",
-        "Check out our team GitHub assignment repository blueprint, looks solid!",
-        "Yes! Also don't forget we have the dynamic attendance QR code broadcasting in 5 minutes.",
-        "The new responsive design lectures are incredible."
-      ];
-      
-      const fileAttachments = [
-        { name: 'Exercise_03_Blueprint.zip', size: '4.8 MB' },
-        { name: 'Lab_Report_Instructions.pdf', size: '820 KB' }
-      ];
-
-      const linkAttachments = [
-        { url: 'https://github.com/msu-academic-hub/classpulse', title: 'ClassPulse MSU Assignment Repo', desc: 'Secure collaborative source code repository' },
-        { url: 'https://canvas.msu.edu/courses/cs101/resources', title: 'Lecture Study Guide Slides', desc: 'Official coursework preparation coordinates' }
-      ];
-
-      const imageAttachments = [
-        'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&q=80&w=400',
-        'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&q=80&w=400'
-      ];
-
-      // Randomly choose message content type
-      const roll = Math.random();
-      let selectedText = studentPhrases[Math.floor(Math.random() * studentPhrases.length)];
-      let attachmentImg: string | undefined;
-      let attachmentFile: { name: string; size: string } | undefined;
-      let attachmentLink: { url: string; title: string; desc: string } | undefined;
-
-      if (roll < 0.2) {
-        attachmentFile = fileAttachments[Math.floor(Math.random() * fileAttachments.length)];
-        selectedText = `Shared a class resource file: ${attachmentFile.name}`;
-      } else if (roll < 0.4) {
-        attachmentLink = linkAttachments[Math.floor(Math.random() * linkAttachments.length)];
-        selectedText = `Shared the links coordinates: ${attachmentLink.title}`;
-      } else if (roll < 0.55) {
-        attachmentImg = imageAttachments[Math.floor(Math.random() * imageAttachments.length)];
-        selectedText = "Check this out. This is the UI layout we are implementing for the sprint design exercise.";
+    if (!activeContactId) {
+      if (channels.length > 0) {
+        setActiveContactId(channels[0].id);
+      } else if (contacts.length > 0) {
+        setActiveContactId(contacts[0].id);
       }
+    }
+  }, [contacts, channels]);
 
-      // Simulate human typing delay
-      setTypingPeerName(chatter.name);
-      setIsPeerTyping(true);
-
-      setTimeout(() => {
-        setIsPeerTyping(false);
-        const dynamicMsg: EnrichedChatMessage = {
-          id: 'vmsg-' + Date.now(),
-          senderId: chatter.id,
-          senderName: chatter.name,
-          senderRole: chatter.role as any,
-          receiverId: activeContactId,
-          receiverName: matchedClass.name,
-          message: selectedText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          attachmentImg,
-          attachmentFile,
-          attachmentLink
-        };
-
-        setMessages(prev => [...prev, dynamicMsg]);
-      }, 3000);
-
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [activeTab, activeContactId, channels, userProfile.name]);
+  // ACTIVE RECURRENT LIVE CHAT SIMULATION - Completely disabled to prevent automated interruptions
+  useEffect(() => {
+    // Disabled as requested: "don't automate response make it like message app wait if the receiver/user response."
+    return () => {};
+  }, [activeContactId, channels, userProfile.name]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputText.trim() && !pendingImg && !pendingLink && !pendingFile) || !activeContactId) return;
 
     const myId = userProfile.role === 'student' ? (userProfile.studentId || '2023-10492') : (userProfile.facultyId || 'fac-1');
-    const destObj = activeTab === 'direct' 
+    const isActiveChannel = channels.some(ch => ch.id === activeContactId);
+    const destObj = !isActiveChannel 
       ? contacts.find(c => c.id === activeContactId) 
       : channels.find(c => c.id === activeContactId);
 
@@ -298,39 +216,6 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
     setShowAttachmentMenu(false);
 
     speakText("Message transmitted.", accessibility.readAloud);
-
-    // Context / Smart interactive simulated immediate human response in Direct messaging
-    if (activeTab === 'direct') {
-      const peerName = destObj?.name || 'Academic Advisor';
-      setTypingPeerName(peerName);
-      setTimeout(() => {
-        setIsPeerTyping(true);
-      }, 700);
-
-      setTimeout(() => {
-        setIsPeerTyping(false);
-        const autoResponses = [
-          `Hi! That makes complete sense. I am reviewing the dynamic attendance ledger right now and will keep you posted.`,
-          `Acknowledged. Thanks for keeping me updated. Can you send me the course syllabus reference?`,
-          `Let me evaluate the schedule coordinates tree on my calendar and I'll confirm.`,
-          `Excellent work on the design. Let's make sure the color scheme fits light/dark visual standards properly.`
-        ];
-        const randomResponse = autoResponses[Math.floor(Math.random() * autoResponses.length)];
-
-        const replyMsg: EnrichedChatMessage = {
-          id: 'reply-' + Date.now(),
-          senderId: activeContactId,
-          senderName: peerName,
-          senderRole: userProfile.role === 'student' ? 'faculty' : 'student',
-          receiverId: myId,
-          receiverName: userProfile.name,
-          message: randomResponse,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, replyMsg]);
-        speakText(`Incoming message reply from ${peerName}`, accessibility.readAloud);
-      }, 3000);
-    }
   };
 
   // Preset loaders for mockup attachments
@@ -370,8 +255,10 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
   // Filter messages for current discussion
   const myId = userProfile.role === 'student' ? (userProfile.studentId || '2023-10492') : (userProfile.facultyId || 'fac-1');
   
+  const isActiveChannel = channels.some(ch => ch.id === activeContactId);
+  
   const currentMessages = messages.filter(m => {
-    if (activeTab === 'direct') {
+    if (!isActiveChannel) {
       return (m.senderId === myId && m.receiverId === activeContactId) ||
              (m.senderId === activeContactId && m.receiverId === myId);
     } else {
@@ -380,11 +267,28 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
   });
 
   const getActiveMetadata = () => {
-    if (activeTab === 'direct') {
-      return contacts.find(c => c.id === activeContactId);
-    } else {
-      return channels.find(c => c.id === activeContactId);
+    const ch = channels.find(c => c.id === activeContactId);
+    if (ch) {
+      return { 
+        id: ch.id, 
+        name: ch.name, 
+        isChannel: true, 
+        code: ch.code, 
+        courseCode: ch.code 
+      };
     }
+    const co = contacts.find(c => c.id === activeContactId);
+    if (co) {
+      return { 
+        id: co.id, 
+        name: co.name, 
+        isChannel: false, 
+        avatar: co.avatar, 
+        role: co.role, 
+        courseCode: co.courseCode 
+      };
+    }
+    return null;
   };
 
   const activeMeta = getActiveMetadata();
@@ -393,81 +297,69 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
     <div className="p-0 rounded-[2rem] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex flex-col md:flex-row h-[580px] overflow-hidden text-left relative z-10 w-full animate-fade-in">
       
       {/* SIDEBAR LIST PANEL */}
-      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-zinc-200/60 dark:border-zinc-850/60 flex flex-col h-[200px] md:h-full p-4 shrink-0 bg-zinc-50/40 dark:bg-zinc-950/20">
+      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-zinc-200/60 dark:border-zinc-850/60 flex flex-col h-[240px] md:h-full p-4 shrink-0 bg-zinc-50/40 dark:bg-zinc-950/20">
         
-        {/* Toggle tabs */}
-        <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl mb-3 shrink-0">
-          <button
-            onClick={() => { setActiveTab('class-channel'); setActiveContactId(''); }}
-            className={`py-1.5 px-3 rounded-lg text-[11px] font-extrabold tracking-wide cursor-pointer uppercase transition-all ${
-              activeTab === 'class-channel'
-                ? 'bg-white dark:bg-zinc-800 text-emerald-500 dark:text-emerald-400 shadow-sm font-black'
-                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-805 dark:hover:text-zinc-200'
-            }`}
-          >
-            Class Channels
-          </button>
-          <button
-            onClick={() => { setActiveTab('direct'); setActiveContactId(''); }}
-            className={`py-1.5 px-3 rounded-lg text-[11px] font-extrabold tracking-wide cursor-pointer uppercase transition-all ${
-              activeTab === 'direct'
-                ? 'bg-white dark:bg-zinc-800 text-emerald-500 dark:text-emerald-400 shadow-sm font-black'
-                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-805 dark:hover:text-zinc-200'
-            }`}
-          >
-            Direct Chats
-          </button>
-        </div>
-
-        {/* Channels/Contacts Iterator list */}
-        <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-          {activeTab === 'direct' && contacts.length === 0 && (
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center py-6 font-medium">No contacts available.</p>
-          )}
-          {activeTab === 'class-channel' && channels.length === 0 && (
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center py-6 font-medium">No Class Channels enrolled.</p>
-          )}
-
-          {activeTab === 'direct' && contacts.map(c => (
+        {onBack && (
+          <div className="mb-3 flex items-center justify-start">
             <button
-              key={c.id}
-              onClick={() => setActiveContactId(c.id)}
-              className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all ${
-                activeContactId === c.id
-                  ? 'bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50'
-              }`}
+              type="button"
+              onClick={onBack}
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              <div className="relative">
-                <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover border border-zinc-200 dark:border-zinc-800" referrerPolicy="no-referrer" />
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-950" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-extrabold truncate text-zinc-900 dark:text-zinc-100">{c.name}</h4>
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate uppercase font-bold mt-0.5">{c.role} • {c.courseCode}</p>
-              </div>
+              ←
             </button>
-          ))}
-
-          {activeTab === 'class-channel' && channels.map(ch => (
+          </div>
+        )}        {/* Channels/Contacts Unified Iterator list */}
+        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-left">
+          <span className="text-[9px] font-black uppercase text-zinc-400 tracking-widest px-2.5 block pb-2">Active Conversations</span>
+          
+          {channels.map(ch => (
             <button
               key={ch.id}
               onClick={() => setActiveContactId(ch.id)}
               className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all ${
                 activeContactId === ch.id
-                  ? 'bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-extrabold'
-                  : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50'
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
+                  : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
               }`}
             >
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 flex items-center justify-center font-black text-sm shrink-0">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
+                activeContactId === ch.id ? 'bg-zinc-950/20 text-white animate-pulse' : 'bg-emerald-500/10 text-emerald-500'
+              }`}>
                 #
               </div>
               <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-extrabold truncate text-zinc-900 dark:text-zinc-150">{ch.name}</h4>
-                <p className="text-[9px] text-zinc-400 dark:text-zinc-500 truncate uppercase mt-0.5 font-bold">{ch.code} Dynamic Room</p>
+                <h4 className={`text-xs font-extrabold truncate ${activeContactId === ch.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{ch.name}</h4>
+                <p className={`text-[9px] truncate uppercase mt-0.5 font-bold ${activeContactId === ch.id ? 'text-emerald-100 bg-emerald-700/30 px-1 py-0.5 rounded' : 'text-zinc-500 dark:text-zinc-400'}`}>{ch.code} Dynamic Room</p>
               </div>
             </button>
           ))}
+
+          {contacts.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setActiveContactId(c.id)}
+              className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all ${
+                activeContactId === c.id
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
+                  : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
+              }`}
+            >
+              <div className="relative">
+                <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover border border-zinc-200 dark:border-zinc-855" referrerPolicy="no-referrer" />
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-950" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className={`text-xs font-extrabold truncate ${activeContactId === c.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{c.name}</h4>
+                <p className={`text-[10px] truncate uppercase font-bold mt-0.5 ${activeContactId === c.id ? 'text-emerald-100 bg-emerald-700/30 px-1 py-0.5 rounded' : 'text-zinc-500 dark:text-zinc-400'}`}>{c.role} • {c.courseCode}</p>
+              </div>
+            </button>
+          ))}
+
+          {channels.length === 0 && contacts.length === 0 && (
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center py-6 font-medium">No active chats available.</p>
+          )}
         </div>
       </div>
 
@@ -479,7 +371,7 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
             {/* Header user identification details */}
             <div className="pb-3 border-b border-zinc-200/60 dark:border-zinc-850/60 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3 min-w-0">
-                {activeTab === 'direct' ? (
+                {!(activeMeta as any).isChannel ? (
                   <div className="relative">
                     <img 
                       src={(activeMeta as any).avatar} 
@@ -497,20 +389,22 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
                 <div className="text-left min-w-0">
                   <h3 className="text-sm font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 truncate">
                     {activeMeta.name}
-                    {activeTab === 'class-channel' && (
-                      <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/10 text-emerald-500 font-bold uppercase tracking-wider">Lobby Live</span>
+                    {(activeMeta as any).isChannel && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/10 text-emerald-500 font-bold uppercase tracking-wider animate-bounce">Lobby Live</span>
                     )}
                   </h3>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-bold tracking-wide mt-0.5 truncate">
-                    {activeTab === 'direct' ? `Direct Secure Sync Feed` : `Instant classroom collaborative workspace • ${currentMessages.length + 8} active participants`}
+                  <p className="text-[10px] text-zinc-450 dark:text-zinc-500 font-bold tracking-wide mt-0.5 truncate">
+                    {!(activeMeta as any).isChannel ? `Direct Secure Sync Feed` : `Instant classroom collaborative workspace • ${currentMessages.length + 8} active participants`}
                   </p>
                 </div>
               </div>
 
-              {/* Bot status decoration banner avoiding telemetry clutter */}
-              <div className="hidden sm:flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500 font-mono text-[9px] uppercase font-bold bg-zinc-100 dark:bg-zinc-900 px-2.5 py-1 rounded-xl">
-                <Bot className="w-3.5 h-3.5 text-emerald-500" />
-                Active Class Assistant
+              {/* Header Action Panel status indicator */}
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500 font-mono text-[9px] uppercase font-bold bg-zinc-100 dark:bg-zinc-910 px-2.5 py-1 rounded-xl">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Sync Room
+                </div>
               </div>
             </div>
 
@@ -536,20 +430,20 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
                       >
                         {/* Name and timestamp header */}
                         <div className="flex items-center gap-1.5 px-1 bg-transparent">
-                          <span className="text-[9px] font-extrabold text-zinc-500 dark:text-zinc-400">{m.senderName}</span>
-                          <span className="text-[8px] font-mono text-zinc-400/80 dark:text-zinc-600">{m.timestamp}</span>
+                          <span className="text-[10px] font-black text-zinc-800 dark:text-zinc-100">{m.senderName}</span>
+                          <span className="text-[8px] font-mono text-zinc-500/80 dark:text-zinc-400">{m.timestamp}</span>
                         </div>
 
                         {/* Interactive Message Bubble */}
                         <div className={`p-3.5 rounded-2xl text-[12px] max-w-[85%] text-left space-y-2.5 transition-all outline-none ${
                           isMe
-                            ? 'bg-neutral-900 dark:bg-zinc-900 border border-neutral-800 dark:border-zinc-800 text-white rounded-tr-none'
-                            : 'bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-850/50 text-zinc-900 dark:text-zinc-155 rounded-tl-none'
+                            ? 'bg-[#03213D] dark:bg-zinc-900 border border-[#03213D]/40 dark:border-zinc-800 text-white rounded-tr-none'
+                            : 'bg-emerald-600 border border-emerald-500 text-white rounded-tl-none font-bold shadow-xs'
                         }`}>
                           
                           {/* Inner standard text if available */}
                           {m.message && (
-                            <p className="leading-relaxed whitespace-pre-wrap">{m.message}</p>
+                            <p className="leading-relaxed whitespace-pre-wrap text-white font-medium">{m.message}</p>
                           )}
 
                           {/* Image Attachment wrapper */}
@@ -680,15 +574,7 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer text-xs font-bold text-zinc-700 dark:text-zinc-350"
                     >
                       <ImageIcon className="w-4 h-4 text-pink-500" />
-                      <span>Attach Science/Hardware Lab Diagram</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => attachPresetImage('library')}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer text-xs font-bold text-zinc-700 dark:text-zinc-350"
-                    >
-                      <ImageIcon className="w-4 h-4 text-emerald-500" />
-                      <span>Attach Study Hall Screen Capture</span>
+                      <span>Photos</span>
                     </button>
                     
                     <button 
@@ -697,16 +583,16 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer text-xs font-bold text-zinc-700 dark:text-zinc-350"
                     >
                       <LinkIcon className="w-4 h-4 text-indigo-500" />
-                      <span>Attach Class Git Repository Link</span>
+                      <span>Link</span>
                     </button>
 
                     <button 
                       type="button" 
-                      onClick={() => attachPresetFile('Syllabus_Revised_v2.pdf', '1.4 MB')}
+                      onClick={() => attachPresetFile('Document_Resource.pdf', '2.1 MB')}
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer text-xs font-bold text-zinc-700 dark:text-zinc-350"
                     >
                       <FileText className="w-4 h-4 text-amber-500" />
-                      <span>Attach Course Syllabus PDF</span>
+                      <span>File</span>
                     </button>
                   </div>
                 </div>

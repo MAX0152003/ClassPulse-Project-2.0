@@ -12,7 +12,8 @@ import {
   Menu,
   Activity,
   ChevronLeft,
-  MessageSquare
+  MessageSquare,
+  Inbox
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 
@@ -24,6 +25,7 @@ interface SidebarProps {
   userName: string;
   userAvatar: string;
   unreadNotifications: number;
+  pendingExcuseCount?: number;
   accessibility: AccessibilityConfig;
 }
 
@@ -35,6 +37,7 @@ export default function Sidebar({
   userName,
   userAvatar,
   unreadNotifications,
+  pendingExcuseCount = 0,
   accessibility
 }: SidebarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -67,6 +70,7 @@ export default function Sidebar({
           { id: 'schedule-editor', label: 'My Classes', icon: CalendarDays },
           { id: 'qr-generator', label: 'Attendance QR', icon: Scan },
           { id: 'students-monitoring', label: 'Students Directory', icon: Users },
+          { id: 'excuse-inbox', label: 'Excuse Inbox', icon: Inbox, badge: pendingExcuseCount },
           { id: 'messages', label: 'Messages', icon: MessageSquare },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
@@ -82,6 +86,30 @@ export default function Sidebar({
     }
   };
 
+  const getRoleNavColors = () => {
+    switch (role) {
+      case 'student':
+        return {
+          activeClass: 'bg-[#03213D]/10 text-[#03213D] dark:text-[#38bdf8] border-l-4 border-[#03213D] font-extrabold shadow-xs',
+          badgeClass: 'bg-[#03213D] text-white',
+          roleLabel: 'text-[#03213D] dark:text-[#a5f3fc]'
+        };
+      case 'faculty':
+        return {
+          activeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-l-4 border-emerald-500 font-extrabold shadow-xs',
+          badgeClass: 'bg-emerald-600 text-white',
+          roleLabel: 'text-emerald-600 dark:text-emerald-400'
+        };
+      case 'admin':
+        return {
+          activeClass: 'bg-[#CC762A]/10 text-[#CC762A] dark:text-[#fdba74] border-l-4 border-[#CC762A] font-extrabold shadow-xs',
+          badgeClass: 'bg-[#CC762A] text-white',
+          roleLabel: 'text-[#CC762A] dark:text-[#fdba74]'
+        };
+    }
+  };
+
+  const themeColors = getRoleNavColors();
   const navItems = getNavItems();
 
   const handleNavClick = (screenId: string, label: string) => {
@@ -97,12 +125,12 @@ export default function Sidebar({
       {/* Mobile Top Header Banner */}
       <div className="md:hidden flex items-center justify-between px-5 py-4 border-b bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-850 text-zinc-900 dark:text-zinc-100 shrink-0 select-none">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-650 bg-blue-600 text-white flex items-center justify-center font-bold shadow-md shadow-blue-500/10">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500 text-black flex items-center justify-center font-bold shadow-md shadow-emerald-500/10">
             <Activity className="w-4.5 h-4.5" />
           </div>
           <span className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100">ClassPulse</span>
-          <span className="text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">
-            {role}
+          <span className="text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 rounded-full">
+            {role === 'student' ? 'Student' : role === 'faculty' ? 'Faculty' : 'Admin'}
           </span>
         </div>
         <button
@@ -127,28 +155,32 @@ export default function Sidebar({
       >
         <div className="relative">
           
-          {/* Collapsible Trigger (Minimize button) positioned lower to never block the logo */}
+          {/* Collapsible Trigger (Minimize button) positioned lower to never block the logo - HIDDEN ON MOBILES */}
           <button
             type="button"
             onClick={toggleCollapse}
-            className={`absolute -right-3 top-20 z-55 p-1.5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-550 dark:text-zinc-400 shadow-md hover:bg-zinc-50 dark:hover:bg-zinc-805 transition-all duration-300 transform scale-100 cursor-pointer opacity-100`}
+            className="hidden md:flex absolute -right-3 top-20 z-55 p-1.5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-550 dark:text-zinc-400 shadow-md hover:bg-zinc-50 dark:hover:bg-zinc-805 transition-all duration-300 transform scale-100 cursor-pointer opacity-100"
             title={isCollapsed ? "Expand Sidebar Menu" : "Collapse Sidebar Menu"}
           >
             <ChevronLeft className={`w-3.5 h-3.5 transition-transform duration-300 text-emerald-500 ${isCollapsed ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Brand Logo & Heartbeat Visual Header */}
-          <div className="p-6 border-b border-zinc-200 dark:border-zinc-850 flex items-center justify-between">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500 text-black flex items-center justify-center font-bold shadow-md shadow-emerald-500/15 shrink-0">
+          <div className={`p-5 border-b border-zinc-200 dark:border-zinc-850 flex items-center transition-all duration-300 ${
+            isCollapsed ? 'justify-center px-0 py-6' : 'justify-between'
+          }`}>
+            <div className={`flex items-center gap-3 transition-all duration-300 ${
+              isCollapsed ? 'justify-center w-10 h-10' : 'w-auto'
+            }`}>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500 text-black flex items-center justify-center font-bold shadow-md shadow-emerald-500/15 shrink-0 transition-transform duration-300 hover:scale-[1.05]">
                 <Activity className="w-5 h-5 stroke-[2.5]" />
               </div>
               {!isCollapsed && (
-                <div className="text-left animate-fade-in">
+                <div className="text-left animate-fade-in flex flex-col justify-center min-w-[120px]">
                   <h1 className="text-base font-black tracking-tight text-zinc-800 dark:text-zinc-100 uppercase">
-                    Class<span className="text-emerald-500 font-extrabold">Pulse</span>
+                    Class<span className="text-emerald-555 font-extrabold text-emerald-500">Pulse</span>
                   </h1>
-                  <p className="text-[9px] text-zinc-400 dark:text-zinc-500 font-bold tracking-widest uppercase">{role} Hub</p>
+                  <p className="text-[9px] text-zinc-400 dark:text-zinc-500 font-bold tracking-widest uppercase">{role}</p>
                 </div>
               )}
             </div>
@@ -163,7 +195,7 @@ export default function Sidebar({
           </div>
 
           {/* User Bio Card */}
-          <div className={`mx-4 my-6 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/45 border border-zinc-200 dark:border-zinc-850/80 flex items-center gap-3 transition-all ${
+          <div className={`mx-4 my-6 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900 flex items-center gap-3 transition-all ${
             isCollapsed ? 'justify-center mx-2 px-2' : ''
           }`}>
             <img
@@ -195,23 +227,21 @@ export default function Sidebar({
                   title={isCollapsed ? item.label : undefined}
                   className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${
                     isActive 
-                      ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-l-4 border-blue-600 font-black shadow-xs' 
-                      : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-200'
+                      ? themeColors.activeClass 
+                      : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/40 hover:text-zinc-900 dark:hover:text-zinc-200'
                   } ${isCollapsed ? 'justify-center px-1 border-l-0' : ''}`}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`w-4.5 h-4.5 shrink-0 transition-colors ${
-                      isActive ? 'text-blue-600 dark:text-blue-400' : 'opacity-95'
-                    }`} />
+                    <Icon className="w-4.5 h-4.5 shrink-0 transition-transform duration-300 hover:scale-110" />
                     {!isCollapsed && <span className="animate-fade-in">{item.label}</span>}
                   </div>
                   {!isCollapsed && item.badge !== undefined && item.badge > 0 && (
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-xs">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs ${themeColors.badgeClass}`}>
                       {item.badge}
                     </span>
                   )}
                   {isCollapsed && item.badge !== undefined && item.badge > 0 && (
-                    <div className="absolute right-3.5 w-2.5 h-2.5 rounded-full bg-blue-600 border border-white dark:border-zinc-950" />
+                    <div className="absolute right-3.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-zinc-950" />
                   )}
                 </button>
               );

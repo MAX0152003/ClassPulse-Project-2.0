@@ -49,6 +49,72 @@ interface DashboardAdminProps {
   onUpdateAnnouncements?: (announcements: Announcement[]) => void;
   userProfile?: UserProfile;
   onUpdateProfile?: (updatedUserProfile: UserProfile) => void;
+  onUpdateAttendanceRecord?: (recordId: string, status: 'present' | 'late' | 'absent') => void;
+}
+
+interface StatCardProps {
+  key?: React.Key;
+  stat: {
+    label: string;
+    targetVal: number;
+    icon: any;
+    color: string;
+    text: string;
+    detail: string;
+  };
+  idx: number;
+}
+
+function StatCard({ stat, idx }: StatCardProps) {
+  const IconComp = stat.icon;
+  // Simple simulation of state-based ticker increment
+  const [displayCount, setDisplayCount] = React.useState(0);
+  React.useEffect(() => {
+    let current = 0;
+    const increment = Math.ceil(stat.targetVal / 25);
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= stat.targetVal) {
+        current = stat.targetVal;
+        clearInterval(timer);
+      }
+      setDisplayCount(current);
+    }, 20);
+    return () => clearInterval(timer);
+  }, [stat.targetVal]);
+
+  return (
+    <motion.div 
+      key={idx}
+      initial={{ opacity: 0, y: 15, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, delay: idx * 0.05 }}
+      whileHover={{ y: -4, boxShadow: "0 10px 25px -5px rgba(16, 185, 129, 0.05)" }}
+      className="p-5 rounded-[1.5rem] border bg-white dark:bg-zinc-950 border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] flex items-center justify-between group relative overflow-hidden text-left"
+    >
+      <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div>
+        <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 dark:text-zinc-500 block">{stat.label}</span>
+        <h3 className="text-3xl font-black mt-1.5 font-mono text-zinc-900 dark:text-zinc-100">
+          {displayCount}
+        </h3>
+        <div className="mt-2 flex flex-col gap-0.5">
+          <span className="text-[10px] text-emerald-500 font-extrabold flex items-center gap-0.5">
+            <ArrowUpRight className="w-3.5 h-3.5" /> {stat.text}
+          </span>
+          <span className="text-[9px] text-zinc-400 dark:text-zinc-650 block truncate">{stat.detail}</span>
+        </div>
+      </div>
+      <div className={`p-3.5 rounded-2xl ${
+        stat.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' :
+        stat.color === 'indigo' ? 'bg-indigo-500/10 text-indigo-550' :
+        stat.color === 'amber' ? 'bg-amber-500/10 text-amber-500' :
+        'bg-purple-500/10 text-purple-400'
+      } shrink-0`}>
+        <IconComp className="w-5.5 h-5.5 stroke-[2]" />
+      </div>
+    </motion.div>
+  );
 }
 
 interface MockUser {
@@ -73,7 +139,8 @@ export default function DashboardAdmin({
   announcements = [],
   onUpdateAnnouncements,
   userProfile,
-  onUpdateProfile
+  onUpdateProfile,
+  onUpdateAttendanceRecord
 }: DashboardAdminProps) {
   
   // Local list of interactive directory users
@@ -262,57 +329,9 @@ export default function DashboardAdmin({
               { label: 'Total Faculty', targetVal: facultyCount, icon: UserCheck, color: 'indigo', text: '+2 this month', detail: 'All credentials initialized' },
               { label: 'Classes Tracked', targetVal: classes.length + 32, icon: BookOpen, color: 'amber', text: '+5 this term', detail: '8 laboratory schedules' },
               { label: 'Attendance Today', targetVal: 189, icon: Calendar, color: 'purple', text: '86% active rate', detail: '75 instant scans recorded' }
-            ].map((stat, idx) => {
-              const IconComp = stat.icon;
-              // Simple simulation of state-based ticker increment
-              const [displayCount, setDisplayCount] = React.useState(0);
-              React.useEffect(() => {
-                let current = 0;
-                const increment = Math.ceil(stat.targetVal / 25);
-                const timer = setInterval(() => {
-                  current += increment;
-                  if (current >= stat.targetVal) {
-                    current = stat.targetVal;
-                    clearInterval(timer);
-                  }
-                  setDisplayCount(current);
-                }, 20);
-                return () => clearInterval(timer);
-              }, [stat.targetVal]);
-
-              return (
-                <motion.div 
-                  key={idx}
-                  initial={{ opacity: 0, y: 15, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.4, delay: idx * 0.05 }}
-                  whileHover={{ y: -4, boxShadow: "0 10px 25px -5px rgba(16, 185, 129, 0.05)" }}
-                  className="p-5 rounded-[1.5rem] border bg-white dark:bg-zinc-950 border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] flex items-center justify-between group relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div>
-                    <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 dark:text-zinc-500 block">{stat.label}</span>
-                    <h3 className="text-3xl font-black mt-1.5 font-mono text-zinc-900 dark:text-zinc-100">
-                      {displayCount}
-                    </h3>
-                    <div className="mt-2 flex flex-col gap-0.5">
-                      <span className="text-[10px] text-emerald-500 font-extrabold flex items-center gap-0.5">
-                        <ArrowUpRight className="w-3.5 h-3.5" /> {stat.text}
-                      </span>
-                      <span className="text-[9px] text-zinc-400 dark:text-zinc-600 block truncate">{stat.detail}</span>
-                    </div>
-                  </div>
-                  <div className={`p-3.5 rounded-2xl ${
-                    stat.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' :
-                    stat.color === 'indigo' ? 'bg-indigo-500/10 text-indigo-550' :
-                    stat.color === 'amber' ? 'bg-amber-500/10 text-amber-500' :
-                    'bg-purple-500/10 text-purple-400'
-                  } shrink-0`}>
-                    <IconComp className="w-5.5 h-5.5 stroke-[2]" />
-                  </div>
-                </motion.div>
-              );
-            })}
+            ].map((stat, idx) => (
+              <StatCard key={idx} stat={stat} idx={idx} />
+            ))}
           </div>
 
           {/* Quick Actions Board */}

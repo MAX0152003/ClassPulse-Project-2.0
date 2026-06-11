@@ -30,7 +30,9 @@ import {
   Award,
   UploadCloud,
   X,
-  MessageSquare
+  MessageSquare,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock, { triggerNativeChime } from './AlarmClock';
@@ -51,6 +53,8 @@ interface DashboardStudentProps {
   onRecordAttendance: (classId: string, status: 'present' | 'late') => void;
   onUpdateProfile: (updated: UserProfile) => void;
   announcements?: Announcement[];
+  excuseLetters?: any[];
+  onAddExcuseLetter?: (newReq: any) => void;
 }
 
 export default function DashboardStudent({
@@ -66,7 +70,9 @@ export default function DashboardStudent({
   enrollments,
   onRecordAttendance,
   onUpdateProfile,
-  announcements = []
+  announcements = [],
+  excuseLetters,
+  onAddExcuseLetter
 }: DashboardStudentProps) {
   
   // State for search query inside My Schedule
@@ -115,8 +121,21 @@ export default function DashboardStudent({
   const [profilePhone, setProfilePhone] = React.useState(userProfile.phone || '');
   const [profileSavedMsg, setProfileSavedMsg] = React.useState(false);
 
-  // Leave requests local persistence engine
-  const [leaveRequests, setLeaveRequests] = React.useState<any[]>(() => {
+  // Bulletins Visibility toggle
+  const [isBulletinsHidden, setIsBulletinsHidden] = React.useState<boolean>(() => {
+    return localStorage.getItem('classpulse_student_bulletins_hidden') === 'true';
+  });
+
+  // Notifications filters & search
+  const [notifSearch, setNotifSearch] = React.useState('');
+  const [notifFilter, setNotifFilter] = React.useState<'all' | 'alerts' | 'updates'>('all');
+
+  React.useEffect(() => {
+    localStorage.setItem('classpulse_student_bulletins_hidden', String(isBulletinsHidden));
+  }, [isBulletinsHidden]);
+
+  // Leave requests local persistence fallback engine
+  const [localLeaveRequests, setLocalLeaveRequests] = React.useState<any[]>(() => {
     const cached = localStorage.getItem('classpulse_student_leaves');
     if (cached) {
       try {
@@ -135,11 +154,13 @@ export default function DashboardStudent({
         startDate: '2026-06-12',
         endDate: '2026-06-14',
         reason: 'Attending regional research conference presentation.',
-        status: 'approved',
+        status: 'valid',
         createdAt: new Date().toISOString()
       }
     ];
   });
+
+  const leaveRequests = excuseLetters || localLeaveRequests;
 
   React.useEffect(() => {
     localStorage.setItem('classpulse_student_leaves', JSON.stringify(leaveRequests));
@@ -163,6 +184,20 @@ export default function DashboardStudent({
     setProfilePhone(userProfile.phone || '');
   }, [userProfile]);
 
+  // Helper function to automatically detect class coordinates (removes Sel broadcasting session dropdown manual block)
+  const getDetectedClass = () => {
+    const activeQR = classes.find(c => c.qrToken && c.qrToken !== 'EXPIRED' && c.qrToken !== 'STANDBY');
+    if (activeQR) return activeQR;
+
+    const now = new Date();
+    const daysMap = ['A', 'MW', 'TTh', 'MW', 'TTh', 'FS', 'FS'];
+    const todayGroup = daysMap[now.getDay()];
+    const todayMatch = classes.find(c => c.days.includes(todayGroup));
+    if (todayMatch) return todayMatch;
+
+    return classes[0];
+  };
+
   // Trigger simulated scan sequence
   const startSimulationScan = () => {
     setIsScanning(true);
@@ -183,11 +218,11 @@ export default function DashboardStudent({
   };
 
   const handleScanSuccess = () => {
-    const matchedClass = classes.find(c => c.id === selectedScanClass);
+    const matchedClass = getDetectedClass();
     if (!matchedClass) {
       setIsScanning(false);
-      setScanResult({ success: false, message: "Invalid Class Code Scanned." });
-      speakText("Scan failed. Class not recognized.", accessibility.readAloud);
+      setScanResult({ success: false, message: "No active class registered in current curriculums." });
+      speakText("Scan failed. No active class recognized.", accessibility.readAloud);
       return;
     }
 
@@ -198,7 +233,7 @@ export default function DashboardStudent({
     setIsScanning(false);
     setScanResult({
       success: true,
-      message: `Verified! Attendance checked into ${matchedClass.code} (${matchedClass.name}) successfully as ${status.toUpperCase()}!`
+      message: `Verified! Auto-scanned QR signature. Attendance checked into ${matchedClass.code} (${matchedClass.name}) at Room ${matchedClass.room} successfully as ${status.toUpperCase()}!`
     });
     
     speakText(`Attendance recorded successfully. Checked as ${status}`, accessibility.readAloud);
@@ -259,34 +294,68 @@ export default function DashboardStudent({
 
           {/* Targeted Administrative Announcements */}
           {announcements.filter(ann => ann.target === 'all' || ann.target === 'student').length > 0 && (
-            <div className="p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 text-amber-950 dark:text-amber-300 space-y-3 text-left">
-              <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-550 bg-amber-500 animate-pulse" />
-                University Bulletins ({announcements.filter(ann => ann.target === 'all' || ann.target === 'student').length})
-              </h4>
-              <div className="space-y-3 divide-y divide-amber-500/10">
-                {announcements
-                  .filter(ann => ann.target === 'all' || ann.target === 'student')
-                  .map((ann) => (
-                    <div key={ann.id} className="pt-3 first:pt-0">
-                      <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{ann.title}</h5>
-                      <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed font-sans">{ann.content}</p>
-                      <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-wider block mt-1 uppercase">Issued {new Date(ann.createdAt).toLocaleDateString()}</span>
-                    </div>
-                  ))}
+            isBulletinsHidden ? (
+              <div className="p-3.5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/10 flex items-center justify-between text-left animate-fade-in">
+                <div className="flex items-center gap-2.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Administrative Bulletins minimized ({announcements.filter(ann => ann.target === 'all' || ann.target === 'student').length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulletinsHidden(false);
+                    speakText("University Bulletins expanded.", accessibility.readAloud);
+                  }}
+                  className="inline-flex items-center gap-1.5 py-1 px-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all cursor-pointer select-none active:scale-95"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Unhide Bulletins
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/[0.02] border border-amber-500/15 text-amber-950 dark:text-amber-300 space-y-3 text-left relative animate-fade-in">
+                <div className="flex items-center justify-between gap-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-550 bg-amber-500 animate-pulse" />
+                    University Bulletins ({announcements.filter(ann => ann.target === 'all' || ann.target === 'student').length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBulletinsHidden(true);
+                      speakText("Administrative Bulletins hidden/minimized.", accessibility.readAloud);
+                    }}
+                    className="inline-flex items-center gap-1.5 py-1 px-2 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer select-none active:scale-95"
+                    title="Hide and minimize bulletins card"
+                  >
+                    <EyeOff className="w-3 h-3" />
+                    Hide
+                  </button>
+                </div>
+                <div className="space-y-3 divide-y divide-amber-500/10">
+                  {announcements
+                    .filter(ann => ann.target === 'all' || ann.target === 'student')
+                    .map((ann) => (
+                      <div key={ann.id} className="pt-3 first:pt-0">
+                        <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400">{ann.title}</h5>
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed font-sans">{ann.content}</p>
+                        <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-wider block mt-1 uppercase">Issued {new Date(ann.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )
           )}
 
-          {/* Student Quick Action & Leave Request Desk */}
+          {/* Student Quick Action & Excuse Letter Desk */}
           <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm space-y-4 text-left">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-900">
               <div>
                 <h3 className="font-extrabold text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-emerald-500" />
-                  Student Quick Actions & Leave Portal
+                  Student Quick Actions & Excuse Portal
                 </h3>
-                <p className="text-xs text-zinc-400">File official medical certifications, fast-access the QR scanner, or message professors directly.</p>
+                <p className="text-xs text-zinc-400">File official excuse certs/letters, fast-access the QR scanner, or message professors directly.</p>
               </div>
             </div>
 
@@ -295,7 +364,7 @@ export default function DashboardStudent({
                 type="button"
                 onClick={() => {
                   setIsLeaveFormOpen(true);
-                  speakText("Opening Leave request application launcher.", accessibility.readAloud);
+                  speakText("Opening Excuse letter application launcher.", accessibility.readAloud);
                 }}
                 className="p-4 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-left transition-all hover:scale-[1.01] cursor-pointer flex flex-col justify-between h-24"
               >
@@ -303,7 +372,7 @@ export default function DashboardStudent({
                   <FileText className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">File Leave Request</h4>
+                  <h4 className="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">File Excuse letter</h4>
                   <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">Submit official excuses & certs</p>
                 </div>
               </button>
@@ -354,7 +423,7 @@ export default function DashboardStudent({
                   <div className="flex items-center justify-between pb-3 border-b border-zinc-150 dark:border-zinc-900">
                     <div className="flex items-center gap-2">
                       <FileText className="w-5 h-5 text-emerald-500" />
-                      <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">Apply for Leave of Absence</h3>
+                      <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">File Excuse letter</h3>
                     </div>
                     <button
                       type="button"
@@ -374,7 +443,7 @@ export default function DashboardStudent({
                       }
                       const activeCls = classes.find(c => c.id === leaveClassId) || classes[0];
                       const newRequest = {
-                        id: `LV-${Math.floor(100 + Math.random() * 900)}`,
+                        id: `EX-${Math.floor(100 + Math.random() * 900)}`,
                         studentId: userProfile.studentId || 'STU-102',
                         studentName: userProfile.name,
                         classId: activeCls.id,
@@ -386,7 +455,11 @@ export default function DashboardStudent({
                         createdAt: new Date().toISOString(),
                         attachmentName: leaveAttachmentName || undefined
                       };
-                      setLeaveRequests(prev => [newRequest, ...prev]);
+                      if (onAddExcuseLetter) {
+                        onAddExcuseLetter(newRequest);
+                      } else {
+                        setLocalLeaveRequests(prev => [newRequest, ...prev]);
+                      }
                       setIsLeaveFormOpen(false);
                       // Reset fields
                       setLeaveStartDate('');
@@ -394,7 +467,7 @@ export default function DashboardStudent({
                       setLeaveReason('');
                       setLeaveAttachment(null);
                       setLeaveAttachmentName('');
-                      speakText(`Success! Leave request submitted to Professor ${activeCls.facultyName} for approval.`, accessibility.readAloud);
+                      speakText(`Success! Excuse letter submitted to Professor ${activeCls.facultyName} for evaluation.`, accessibility.readAloud);
                     }}
                     className="space-y-4"
                   >
@@ -480,13 +553,13 @@ export default function DashboardStudent({
             {/* Render student applied leaves inline */}
             {leaveRequests.length > 0 && (
               <div className="pt-3 border-t border-zinc-100 dark:border-zinc-900 text-left">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Active Leave Applications ({leaveRequests.length})</span>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Submitted Excuse Letters ({leaveRequests.length})</span>
                 <div className="space-y-2 mt-2 max-h-36 overflow-y-auto scrollbar-thin">
                   {leaveRequests.map(req => (
                     <div key={req.id} className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 flex items-center justify-between text-xs">
                       <div>
                         <div className="flex items-center gap-1.5 font-bold">
-                          <span className="font-extrabold text-xs text-zinc-800 dark:text-zinc-200">{req.className}</span>
+                           <span className="font-extrabold text-xs text-zinc-800 dark:text-zinc-200">{req.className}</span>
                           <span className="text-[9px] font-mono font-black text-zinc-400">({req.id})</span>
                         </div>
                         <p className="text-[10px] text-zinc-450 leading-normal mt-0.5">Duration: {req.startDate} to {req.endDate} • {req.reason}</p>
@@ -495,11 +568,11 @@ export default function DashboardStudent({
                         )}
                       </div>
                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                        req.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
-                        req.status === 'rejected' ? 'bg-red-100 dark:bg-red-500/15 text-red-500' :
+                        req.status === 'approved' || req.status === 'valid' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
+                        req.status === 'rejected' || req.status === 'invalid' ? 'bg-red-100 dark:bg-red-500/15 text-red-500' :
                         'bg-zinc-200 dark:bg-zinc-850 text-zinc-550'
                       }`}>
-                        {req.status}
+                        {req.status === 'approved' || req.status === 'valid' ? 'valid' : req.status === 'rejected' || req.status === 'invalid' ? 'invalid' : req.status}
                       </span>
                     </div>
                   ))}
@@ -790,22 +863,25 @@ export default function DashboardStudent({
               {/* Precision Heartrate Clock */}
               <AlarmClock readAloudEnabled={accessibility.readAloud} />
 
-              {/* Roster Auto-join instruction banner */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 relative overflow-hidden">
+              {/* University Information Guidelines */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900/40 border border-zinc-205 dark:border-zinc-800/80 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-3 text-emerald-500">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                <h4 className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider mb-1">Instant Guest Enrollment</h4>
+                <h4 className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase tracking-wider mb-1">Campus Life Assistance</h4>
                 <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-relaxed mb-3">
-                  Scanning any QR attendance passcode for a class you are not currently joined in will automatically enroll you in that academic record ledger. Try it now!
+                  Check your daily check-in logs and message subject instructors securely. If offline, the local database logs your timestamp automatically.
                 </p>
-                <button
-                  onClick={() => setScreen('attendance')}
-                  type="button"
-                  className="w-full text-center py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-widest border border-zinc-200/60 dark:border-zinc-700 transition-colors cursor-pointer"
-                >
-                  Configure Camera Scan
-                </button>
+                <div className="space-y-2 text-[10px] text-zinc-500 dark:text-zinc-405 font-bold border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                  <div className="flex justify-between">
+                    <span>Help Desk</span>
+                    <span className="text-emerald-500">Local 102</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Library</span>
+                    <span className="text-emerald-500">Local 105</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -816,12 +892,14 @@ export default function DashboardStudent({
       {/* 2. MY SCHEDULE CALENDAR VIEW */}
       {activeScreen === 'schedule' && (
         <div className="space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -944,12 +1022,14 @@ export default function DashboardStudent({
       {/* 3. QR CODES ATTENDANCE SCANNER SIMULATOR VIEW */}
       {activeScreen === 'attendance' && (
         <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="p-6 rounded-2xl bg-white dark:bg-zinc-100/50 border border-zinc-200 dark:border-zinc-850/50 p-6 rounded-2xl bg-white dark:bg-zinc-950 shadow-sm border border-zinc-250 dark:border-zinc-850">
@@ -962,19 +1042,15 @@ export default function DashboardStudent({
             </div>
 
             <form onSubmit={(e) => e.preventDefault()} className="space-y-4 mt-5">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">Select broadcasting class session</label>
-                <select
-                  value={selectedScanClass}
-                  onChange={(e) => setSelectedScanClass(e.target.value)}
-                  className="w-full text-xs p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
-                >
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} - {c.name} ({c.room})
-                    </option>
-                  ))}
-                </select>
+              {/* Dynamic Auto-Detection banner */}
+              <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 text-left flex items-start gap-2.5">
+                <span className="text-sm">⚡</span>
+                <div>
+                  <p className="font-extrabold text-blue-800 dark:text-blue-300">Live Auto-Detection Target Active</p>
+                  <p className="mt-0.5 leading-relaxed text-zinc-650 dark:text-zinc-350">
+                    The scanner automatically locks onto the broadcasting class for your current session details: <strong className="font-extrabold text-zinc-900 dark:text-zinc-100 bg-zinc-200/50 dark:bg-zinc-800 px-1 rounded">{getDetectedClass() ? `${getDetectedClass()?.code} - ${getDetectedClass()?.name}` : 'No Class Registered'}</strong> (Room {getDetectedClass()?.room || 'N/A'})
+                  </p>
+                </div>
               </div>
 
               {/* Simulated Webcam Viewport screen */}
@@ -1080,6 +1156,7 @@ export default function DashboardStudent({
             classes={classes} 
             enrollments={enrollments} 
             accessibility={accessibility} 
+            onBack={() => setScreen('dashboard')}
           />
         </div>
       )}
@@ -1087,39 +1164,172 @@ export default function DashboardStudent({
       {/* 4. NOTIFICATIONS TAB */}
       {activeScreen === 'notifications' && (
         <div className="max-w-xl mx-auto space-y-4 animate-fade-in text-left">
-          <div>
-            <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-              <BellRing className="w-5 h-5 text-emerald-500" />
-              Notifications
-            </h2>
-            <p className="text-xs text-zinc-400">Administrative updates and system logs</p>
+          <div className="pb-1">
+            <button 
+              onClick={() => setScreen('dashboard')} 
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
+            >
+              ←
+            </button>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-900 pb-3">
+            <div>
+              <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                <BellRing className="w-5 h-5 text-emerald-500" />
+                Notifications
+              </h2>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {notifications.map((notif) => (
-              <div 
-                key={notif.id}
-                className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 flex items-start gap-3 text-left"
+          {/* Search and Classification Filters Block */}
+          <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-405 dark:text-zinc-500" />
+              <input
+                type="text"
+                value={notifSearch}
+                onChange={(e) => setNotifSearch(e.target.value)}
+                placeholder="Search notification logs..."
+                className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs font-medium placeholder-zinc-400 text-zinc-850 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              {notifSearch && (
+                <button
+                  type="button"
+                  onClick={() => setNotifSearch('')}
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Structured Classification Tabs */}
+            <div className="grid grid-cols-3 gap-1.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('all');
+                  speakText("Showing all notifications", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'all'
+                    ? 'bg-neutral-900 dark:bg-zinc-800 text-white shadow-sm font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
               >
-                <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
-                  notif.type === 'alert' ? 'bg-red-500/10 text-red-500' :
-                  notif.type === 'warning' ? 'bg-amber-500/10 text-amber-550' :
-                  notif.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
-                  'bg-zinc-100 dark:bg-zinc-850 text-zinc-500'
-                }`}>
-                  <BellRing className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2.5">
-                    <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 truncate">{notif.title}</h4>
-                    <span className="text-[9px] font-mono text-zinc-400 tracking-wider font-semibold uppercase">{notif.timestamp}</span>
+                <span>All</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-zinc-200 dark:bg-zinc-700 text-zinc-650 dark:text-zinc-200 font-bold">
+                  {notifications.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('alerts');
+                  speakText("Showing alerts and warnings only", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'alerts'
+                    ? 'bg-amber-500 text-neutral-950 font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
+              >
+                <span>⚠️ Alerts</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-amber-500/10 text-amber-900 dark:text-amber-200 font-bold">
+                  {notifications.filter(n => n.type === 'alert' || n.type === 'warning').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifFilter('updates');
+                  speakText("Showing standard bulletins and status updates only", accessibility.readAloud);
+                }}
+                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  notifFilter === 'updates'
+                    ? 'bg-emerald-600 text-white font-black'
+                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
+                }`}
+              >
+                <span>✅ Updates</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
+                  {notifications.filter(n => n.type === 'info' || n.type === 'success').length}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* List Section */}
+          <div className="space-y-2.5">
+            {(() => {
+              // Apply active classification search & type filter logic
+              const filtered = notifications.filter(notif => {
+                const matchesSearch = notif.title.toLowerCase().includes(notifSearch.toLowerCase()) || 
+                                     notif.message.toLowerCase().includes(notifSearch.toLowerCase());
+                
+                if (!matchesSearch) return false;
+
+                if (notifFilter === 'alerts') {
+                  return notif.type === 'alert' || notif.type === 'warning';
+                }
+                if (notifFilter === 'updates') {
+                  return notif.type === 'info' || notif.type === 'success';
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="p-8 text-center rounded-2xl bg-zinc-50 dark:bg-zinc-950/20 border border-zinc-150 dark:border-zinc-850 space-y-2">
+                    <p className="text-xs text-zinc-400 font-bold">No notifications match your active search filter.</p>
+                    <button
+                      type="button"
+                      onClick={() => { setNotifSearch(''); setNotifFilter('all'); }}
+                      className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
                   </div>
-                  <p className="text-[11px] text-zinc-450 dark:text-zinc-400 mt-1 leading-normal">
-                    {notif.message}
-                  </p>
+                );
+              }
+
+              return filtered.map((notif) => (
+                <div 
+                  key={notif.id}
+                  className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-850 flex items-start gap-3.5 text-left shadow-xs transition-transform hover:translate-x-0.5"
+                >
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    notif.type === 'alert' ? 'bg-red-500/10 text-red-500' :
+                    notif.type === 'warning' ? 'bg-amber-500/10 text-amber-550' :
+                    notif.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
+                    'bg-blue-500/10 text-blue-500'
+                  }`}>
+                    <BellRing className="w-3.5 h-3.5 animate-pulse" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2.5">
+                      <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                        {notif.title}
+                        {!notif.read && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        )}
+                      </h4>
+                      <span className="text-[9px] font-mono text-zinc-400 tracking-wider font-semibold uppercase">{notif.timestamp}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-450 dark:text-zinc-400 mt-1 leading-normal">
+                      {notif.message}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -1127,12 +1337,14 @@ export default function DashboardStudent({
       {/* 5. USER PROFILE SETTINGS */}
       {activeScreen === 'profile' && (
         <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
-          <div className="flex gap-2">
+          <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
-              className="flex items-center gap-1.5 text-xs text-emerald-500 hover:underline border border-emerald-500/10 px-2.5 py-1 rounded bg-emerald-500/5 cursor-pointer font-bold"
+              type="button"
+              className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-zinc-50/80 dark:hover:bg-zinc-850 cursor-pointer transition-all active:scale-95 shadow-sm font-bold text-lg"
+              title="Back"
             >
-              ← Back to Dashboard
+              ←
             </button>
           </div>
           <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-855 shadow-sm">
