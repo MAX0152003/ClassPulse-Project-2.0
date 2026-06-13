@@ -1,4 +1,6 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { 
   ClassSession, 
   AttendanceRecord, 
@@ -32,7 +34,9 @@ import {
   X,
   MessageSquare,
   Eye,
-  EyeOff
+  EyeOff,
+  Trash2,
+  Download
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock, { triggerNativeChime } from './AlarmClock';
@@ -52,9 +56,12 @@ interface DashboardStudentProps {
   enrollments: Enrollment[];
   onRecordAttendance: (classId: string, status: 'present' | 'late') => void;
   onUpdateProfile: (updated: UserProfile) => void;
+  onClearAllNotifications?: () => void;
+  onMarkAllNotificationsRead?: () => void;
   announcements?: Announcement[];
   excuseLetters?: any[];
   onAddExcuseLetter?: (newReq: any) => void;
+  onDropSubject?: (classId: string) => void;
 }
 
 export default function DashboardStudent({
@@ -70,9 +77,12 @@ export default function DashboardStudent({
   enrollments,
   onRecordAttendance,
   onUpdateProfile,
+  onClearAllNotifications,
+  onMarkAllNotificationsRead,
   announcements = [],
   excuseLetters,
-  onAddExcuseLetter
+  onAddExcuseLetter,
+  onDropSubject
 }: DashboardStudentProps) {
   
   // State for search query inside My Schedule
@@ -83,6 +93,13 @@ export default function DashboardStudent({
   const [isScanning, setIsScanning] = React.useState(false);
   const [scanningProgress, setScanningProgress] = React.useState(0);
   const [scanResult, setScanResult] = React.useState<{ success: boolean; message: string } | null>(null);
+
+  // Real Camera scan support
+  const [scannerType, setScannerType] = React.useState<'live' | 'simulation'>('live');
+  const [cameraError, setCameraError] = React.useState<string | null>(null);
+  const [selectedCameraId, setSelectedCameraId] = React.useState<string>('');
+  const [availableCameras, setAvailableCameras] = React.useState<Array<{ id: string, label: string }>>([]);
+  const html5QrCodeRef = React.useRef<Html5Qrcode | null>(null);
 
   // Modal display states
   const [selectedClassDetail, setSelectedClassDetail] = React.useState<ClassSession | null>(null);
@@ -239,6 +256,157 @@ export default function DashboardStudent({
     speakText(`Attendance recorded successfully. Checked as ${status}`, accessibility.readAloud);
   };
 
+  // Real Web Camera implementation
+  const startLiveCamera = async () => {
+    setCameraError(null);
+    setScanResult(null);
+    
+    const elementId = "live-qr-reader";
+    // Short deferment to ensure viewport is mounted in the DOM
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    try {
+      if (!html5QrCodeRef.current) {
+        html5QrCodeRef.current = new Html5Qrcode(elementId);
+      }
+
+      setIsScanning(true);
+      speakText("Starting real-time camera feed. Please point your lens at the QR code.", accessibility.readAloud);
+
+      await html5QrCodeRef.current.start(
+        selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" },
+        {
+          fps: 15,
+          qrbox: (width, height) => {
+            const minSize = Math.min(width, height);
+            const boxSize = Math.max(160, Math.round(minSize * 0.7));
+            return { width: boxSize, height: boxSize };
+          }
+        },
+        async (decodedText) => {
+          await handleDecodedText(decodedText);
+        },
+        () => {
+          // Silent scan error logging
+        }
+      );
+
+      // Fetch cameras
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          setAvailableCameras(devices.map(d => ({ id: d.id, label: d.label || `Camera ${devices.indexOf(d) + 1}` })));
+          if (!selectedCameraId) {
+            setSelectedCameraId(devices[0].id);
+          }
+        }
+      } catch (err) {
+        // Fallback
+      }
+    } catch (err: any) {
+      console.error("Camera start failure", err);
+      setIsScanning(false);
+      setCameraError(err?.message || "Failed to initiate web camera. Please ensure permissions are granted in browser settings.");
+      speakText("Camera initiation failed. Please verify security permissions.", accessibility.readAloud);
+    }
+  };
+
+  const stopLiveCamera = async () => {
+    if (html5QrCodeRef.current) {
+      if (html5QrCodeRef.current.isScanning) {
+        try {
+          await html5QrCodeRef.current.stop();
+        } catch (e) {
+          console.error("Failed to stop scanner", e);
+        }
+      }
+    }
+    setIsScanning(false);
+  };
+
+  const handleDecodedText = async (decodedText: string) => {
+    await stopLiveCamera();
+
+    try {
+      let classId = "";
+      let tokenValue = "";
+      let parsedJson: any = null;
+
+      // Check if it is a JSON string
+      if (decodedText.trim().startsWith('{') && decodedText.trim().endsWith('}')) {
+        try {
+          parsedJson = JSON.parse(decodedText);
+          classId = parsedJson.classId || "";
+          tokenValue = parsedJson.token || parsedJson.qrToken || "";
+        } catch (e) {
+          // Fallback to text
+        }
+      }
+
+      let matchedClass: ClassSession | undefined;
+      
+      if (classId) {
+        matchedClass = classes.find(c => c.id === classId);
+      }
+      
+      if (!matchedClass) {
+        const cleanText = (tokenValue || decodedText).trim();
+        matchedClass = classes.find(c => 
+          c.qrToken === cleanText || 
+          (c.qrToken && c.qrToken.toLowerCase() === cleanText.toLowerCase())
+        );
+      }
+
+      if (!matchedClass) {
+        const cleanText = decodedText.trim();
+        matchedClass = classes.find(c => 
+          cleanText.includes(c.code) || 
+          c.code.toLowerCase().includes(cleanText.toLowerCase())
+        );
+      }
+
+      if (!matchedClass) {
+        setScanResult({
+          success: false,
+          message: `Unrecognized token: "${decodedText.substring(0, 40)}${decodedText.length > 40 ? '...' : ''}". Match the active rotation keys from your professor.`
+        });
+        speakText("Scan validation failed. Token didn't match any live session.", accessibility.readAloud);
+        return;
+      }
+
+      const status = Math.random() > 0.85 ? 'late' : 'present';
+      onRecordAttendance(matchedClass.id, status);
+
+      setScanResult({
+        success: true,
+        message: `Verified! Physical Camera scan successful for ${matchedClass.code} (${matchedClass.name}) at Room ${matchedClass.room} as ${status.toUpperCase()}!`
+      });
+      speakText(`Scanned present successfully to ${matchedClass.name}`, accessibility.readAloud);
+    } catch (err: any) {
+      setScanResult({
+        success: false,
+        message: `Scanning error: ${err?.message || 'Unknown processing error'}`
+      });
+    }
+  };
+
+  // Turn off camera when changing tabs
+  React.useEffect(() => {
+    if (activeScreen !== 'attendance') {
+      stopLiveCamera();
+    } else if (scannerType === 'live') {
+      const timer = setTimeout(() => {
+        startLiveCamera();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    return () => {
+      stopLiveCamera();
+    };
+  }, [activeScreen, scannerType]);
+
   const handleOpenSubjectDetails = (cls: ClassSession) => {
     setSelectedClassDetail(cls);
     setIsDetailModalOpen(true);
@@ -257,6 +425,66 @@ export default function DashboardStudent({
     }
   };
 
+  const handleDownloadReport = () => {
+    const studentRecs = attendanceRecords.filter(
+      r => r.studentId === userProfile.studentId || r.studentName === userProfile.name
+    );
+
+    if (studentRecs.length === 0) {
+      alert("No attendance records found to export.");
+      speakText("No attendance records found to export.", accessibility.readAloud);
+      return;
+    }
+
+    const sortedRecs = [...studentRecs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const headers = ["Date", "Class Code", "Class Name", "Status", "Time", "Academic Standing Remarks"];
+    
+    let csvContent = `MINIMALS UNIVERSITY SYSTEM - CAMPUS ATTENDANCE TRANSCRIPT\r\n`;
+    csvContent += `Student Name: ${userProfile.name}\r\n`;
+    csvContent += `Student ID: ${userProfile.studentId || 'N/A'}\r\n`;
+    csvContent += `Email: ${userProfile.email}\r\n`;
+    csvContent += `Academic Status: ${attendanceRate >= 80 ? 'GOOD STANDING' : 'NEEDS ATTENTION'} (${attendanceRate}% overall rate)\r\n`;
+    csvContent += `Report Generated: ${new Date().toLocaleString()}\r\n`;
+    csvContent += `\r\n`;
+    csvContent += headers.join(",") + "\r\n";
+
+    sortedRecs.forEach(r => {
+      const cls = classes.find(c => c.id === r.classId);
+      const classCode = cls ? cls.code : r.classCode || 'N/A';
+      const className = cls ? cls.name : r.className || 'N/A';
+      
+      let formattedDate = r.date;
+      try {
+        const d = new Date(r.date);
+        formattedDate = d.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' });
+      } catch (err) {
+        // use fallback string
+      }
+
+      const row = [
+        `"${formattedDate}"`,
+        `"${classCode}"`,
+        `"${className.replace(/"/g, '""')}"`,
+        `"${r.status.toUpperCase()}"`,
+        `"${r.time || 'N/A'}"`,
+        `"${r.status === 'present' ? 'Verified Session Checkin' : r.status === 'late' ? 'Late Arrival Session' : 'Absentee Mark Locked'}"`
+      ];
+      csvContent += row.join(",") + "\r\n";
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `MSU_Attendance_Report_${userProfile.studentId || 'Student'}_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    speakText("Highly-detailed localized attendance transcript downloaded successfully.", accessibility.readAloud);
+  };
+
   // Compute stats metrics dynamically
   const totalChecked = attendanceRecords.filter(r => r.studentId === userProfile.studentId || r.studentName === userProfile.name).length;
   const presentsCount = attendanceRecords.filter(r => r.status === 'present' && (r.studentId === userProfile.studentId || r.studentName === userProfile.name)).length;
@@ -268,10 +496,18 @@ export default function DashboardStudent({
   return (
     <div className="space-y-6">
       
-      {/* 1. STUDENT DASHBOARD CONTAINER */}
-      {activeScreen === 'dashboard' && (
-        <div className="space-y-6 animate-fade-in text-left">
-          {/* Welcome Banner */}
+      <AnimatePresence mode="wait">
+        {/* 1. STUDENT DASHBOARD CONTAINER */}
+        {activeScreen === 'dashboard' && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-6 text-left"
+          >
+            {/* Welcome Banner */}
           <div className="p-6 md:p-8 rounded-3xl relative overflow-hidden transition-all duration-300 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-850 text-white shadow-xl shadow-emerald-500/5">
             <div className="relative z-10 space-y-2.5">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/15 text-white/90">
@@ -644,6 +880,17 @@ export default function DashboardStudent({
                   <span className="font-mono font-bold text-xs text-zinc-805 dark:text-zinc-200">{latesCount} scans</span>
                 </div>
               </div>
+
+              <button
+                type="button"
+                id="student-download-report-btn"
+                onClick={handleDownloadReport}
+                className="w-full mt-2 py-2 px-3 bg-zinc-950 hover:bg-zinc-900 dark:bg-zinc-900 dark:hover:bg-zinc-850 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 border border-zinc-800 dark:border-zinc-800"
+                title="Download your printable monthly attendance report as localized CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                Download Report (CSV)
+              </button>
             </div>
 
             {/* 2. Faculty availability coordinates status updates */}
@@ -705,7 +952,7 @@ export default function DashboardStudent({
               </div>
 
               <button 
-                onClick={() => setScreen('classes')}
+                onClick={() => setScreen('schedule')}
                 className="w-full py-1.5 bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 hover:text-emerald-500 transition-colors text-[9.5px] font-bold uppercase tracking-wider rounded-lg border border-zinc-200/50 dark:border-zinc-850/50 text-zinc-650 dark:text-zinc-350 cursor-pointer text-center block"
               >
                 Inspect All Schedules Catalog
@@ -731,7 +978,9 @@ export default function DashboardStudent({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {classes.map(cls => {
                     const isEnrolled = enrollments.some(
-                      e => e.classId === cls.id && (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email)
+                      e => e.classId === cls.id && 
+                           (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email) &&
+                           !e.deletedByStudent
                     );
 
                     // Compute active standing indicators
@@ -767,7 +1016,7 @@ export default function DashboardStudent({
                       <div 
                         key={cls.id}
                         onClick={() => handleOpenSubjectDetails(cls)}
-                        className={`p-4 rounded-xl border text-left transition-all duration-200 hover:scale-[1.01] cursor-pointer ${
+                        className={`p-4 rounded-xl border text-left transition-all duration-200 hover:scale-[1.01] cursor-pointer relative group/card ${
                           isEnrolled 
                             ? 'bg-zinc-50/50 hover:bg-zinc-100/60 dark:bg-zinc-900/30 dark:border-zinc-840 dark:hover:bg-zinc-900/65' 
                             : 'bg-zinc-100/20 border-dashed border-zinc-200 dark:border-zinc-900 hover:border-emerald-500/40'
@@ -792,6 +1041,23 @@ export default function DashboardStudent({
                               <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${standingColor}`}>
                                 {standingLabel}
                               </span>
+                            )}
+                            
+                            {/* Student soft delete/drop action trigger button */}
+                            {isEnrolled && onDropSubject && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Are you sure you want to delete ${cls.code} from your student dashboard? Note: Your official records in the faculty files remains fully unaffected. Scanning the QR code again automatically continues your previous records.`)) {
+                                    onDropSubject(cls.id);
+                                  }
+                                }}
+                                className="p-1 h-6 w-6 mt-1 flex items-center justify-center rounded-md bg-zinc-100 hover:bg-red-500/10 dark:bg-zinc-805 text-zinc-400 hover:text-red-500 cursor-pointer border border-transparent hover:border-red-500/20 transition-all opacity-0 group-hover/card:opacity-100"
+                                title="Delete/drop subject"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -886,12 +1152,19 @@ export default function DashboardStudent({
             </div>
 
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 2. MY SCHEDULE CALENDAR VIEW */}
       {activeScreen === 'schedule' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="schedule"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -935,7 +1208,7 @@ export default function DashboardStudent({
               )
               .map(cls => {
                 const isEnrolled = enrollments.some(
-                  e => e.classId === cls.id && (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email)
+                  e => e.classId === cls.id && (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email) && !e.deletedByStudent
                 );
 
                 // Compute student class standings inside active rosters
@@ -1016,12 +1289,19 @@ export default function DashboardStudent({
                 );
               })}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 3. QR CODES ATTENDANCE SCANNER SIMULATOR VIEW */}
       {activeScreen === 'attendance' && (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="attendance"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-2xl mx-auto space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1032,9 +1312,9 @@ export default function DashboardStudent({
               ←
             </button>
           </div>
-          <div className="p-6 rounded-2xl bg-white dark:bg-zinc-100/50 border border-zinc-200 dark:border-zinc-850/50 p-6 rounded-2xl bg-white dark:bg-zinc-950 shadow-sm border border-zinc-250 dark:border-zinc-850">
+          <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 shadow-sm border border-zinc-250 dark:border-zinc-850">
             <div>
-              <h2 className="text-lg font-black text-zinc-100 tracking-tight flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+              <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
                 <Scan className="w-5 h-5 text-emerald-500" />
                 Live Attendance Scantool
               </h2>
@@ -1042,49 +1322,89 @@ export default function DashboardStudent({
             </div>
 
             <form onSubmit={(e) => e.preventDefault()} className="space-y-4 mt-5">
-              {/* Dynamic Auto-Detection banner */}
-              <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 text-left flex items-start gap-2.5">
-                <span className="text-sm">⚡</span>
-                <div>
-                  <p className="font-extrabold text-blue-800 dark:text-blue-300">Live Auto-Detection Target Active</p>
-                  <p className="mt-0.5 leading-relaxed text-zinc-650 dark:text-zinc-350">
-                    The scanner automatically locks onto the broadcasting class for your current session details: <strong className="font-extrabold text-zinc-900 dark:text-zinc-100 bg-zinc-200/50 dark:bg-zinc-800 px-1 rounded">{getDetectedClass() ? `${getDetectedClass()?.code} - ${getDetectedClass()?.name}` : 'No Class Registered'}</strong> (Room {getDetectedClass()?.room || 'N/A'})
-                  </p>
-                </div>
-              </div>
-
-              {/* Simulated Webcam Viewport screen */}
-              <div className="relative rounded-2xl bg-zinc-950 h-50 overflow-hidden border border-zinc-900 flex flex-col items-center justify-center text-white">
-                {isScanning ? (
-                  <div className="space-y-3 z-10 text-center">
-                    <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                    <p className="text-xs font-mono font-semibold tracking-widest text-emerald-450 uppercase animate-pulse">{scanningProgress}% scanned</p>
-                  </div>
-                ) : (
-                  <div className="text-center space-y-3 p-4 z-10">
-                    <Scan className="w-10 h-10 text-emerald-500 mx-auto animate-bounce" />
-                    <div>
-                      <p className="text-xs font-bold text-zinc-200 uppercase tracking-widest">Feed Standby</p>
-                      <p className="text-[10px] text-zinc-500 font-medium">Ready to focus Class QR matrices</p>
+              <div className="space-y-4 animate-fade-in">
+                {/* Real Camera Viewport */}
+                <div className="relative rounded-2xl bg-zinc-950 min-h-[300px] overflow-hidden border border-zinc-250 dark:border-zinc-800 flex flex-col justify-between">
+                  {/* Camera Feed Target Container */}
+                  <div id="live-qr-reader" className="w-full min-h-[300px] bg-zinc-950 overflow-hidden relative"></div>
+                  
+                  {/* Standard HUD Overlay with a framing grid */}
+                  <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10 bg-gradient-to-t from-black/50 via-transparent to-black/50">
+                    <div className="flex justify-between items-start">
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500 text-black text-[9px] font-black tracking-widest uppercase shadow">
+                        {isScanning ? 'LIVE CAMERA ACTIVE' : 'CAMERA STANDBY'}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-2.5 h-2.5 rounded-full ${isScanning ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`}></div>
+                      </div>
                     </div>
+                    
+                    {/* Interactive frame sights */}
+                    <div className="mx-auto my-auto w-44 h-44 border-2 border-dashed border-emerald-500/50 rounded-2xl relative flex items-center justify-center">
+                      <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-400"></div>
+                      <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-emerald-400"></div>
+                      <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-emerald-400"></div>
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-emerald-400"></div>
+                      {isScanning && (
+                        <div className="w-full h-0.5 bg-emerald-500 shadow-md absolute shadow-emerald-500/80 animate-[bounce_2.5s_infinite]" />
+                      )}
+                    </div>
+
+                    <p className="text-center text-[10px] font-mono tracking-widest text-emerald-400 bg-zinc-900/80 py-1 rounded backdrop-blur-xs">
+                      CENTER CLASS QR CODE IN FRAME
+                    </p>
+                  </div>
+                </div>
+
+                {/* Device selectors selection drop down */}
+                {availableCameras.length > 1 && (
+                  <div className="flex items-center justify-between gap-2.5 bg-zinc-150/15 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 px-3 py-2 rounded-xl">
+                    <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">SELECT INPUT CAMERA:</span>
+                    <select
+                      value={selectedCameraId}
+                      onChange={(e) => {
+                        setSelectedCameraId(e.target.value);
+                        stopLiveCamera().then(() => startLiveCamera());
+                      }}
+                      className="text-xs bg-transparent text-zinc-850 dark:text-zinc-200 border-none outline-none font-bold cursor-pointer"
+                    >
+                      {availableCameras.map(cam => (
+                        <option key={cam.id} value={cam.id} className="dark:bg-zinc-950 font-sans font-bold">
+                          {cam.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
 
-                {/* Laser scanline animation */}
-                {isScanning && (
-                  <div className="absolute inset-x-0 h-0.5 bg-emerald-550 shadow-md shadow-emerald-500 bg-emerald-500 animate-[bounce_2s_infinite]" />
+                {cameraError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 text-left">
+                    <p className="font-extrabold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-red-500" /> Frame Connection Warning</p>
+                    <p className="text-zinc-500 dark:text-zinc-300 font-medium leading-relaxed mt-1 text-[11px]">
+                      {cameraError} Verify that webcam permissions are approved in your browser settings.
+                    </p>
+                  </div>
                 )}
-              </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={startSimulationScan}
-                  disabled={isScanning}
-                  className="flex-1 py-3 rounded-xl bg-emerald-505 bg-emerald-500 text-black text-xs font-black uppercase tracking-wider hover:bg-emerald-400 cursor-pointer text-center disabled:opacity-50"
-                >
-                  Simulate QR camera Scan
-                </button>
+                <div className="flex gap-2.5">
+                  {isScanning ? (
+                    <button
+                      type="button"
+                      onClick={stopLiveCamera}
+                      className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-wider cursor-pointer text-center select-none active:scale-95 transition-all"
+                    >
+                      Stop Finder Feed
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startLiveCamera}
+                      className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider cursor-pointer text-center select-none active:scale-95 transition-all"
+                    >
+                      Start Camera scanner
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
 
@@ -1138,12 +1458,19 @@ export default function DashboardStudent({
                 ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Messages tab routing */}
       {activeScreen === 'messages' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="messages"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           <div>
             <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
               <MessageSquare className="w-5.5 h-5.5 text-blue-600" />
@@ -1158,12 +1485,19 @@ export default function DashboardStudent({
             accessibility={accessibility} 
             onBack={() => setScreen('dashboard')}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* 4. NOTIFICATIONS TAB */}
       {activeScreen === 'notifications' && (
-        <div className="max-w-xl mx-auto space-y-4 animate-fade-in text-left">
+        <motion.div
+          key="notifications"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-xl mx-auto space-y-4 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1183,6 +1517,24 @@ export default function DashboardStudent({
               </h2>
               <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
             </div>
+            {notifications.length > 0 && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={onMarkAllNotificationsRead}
+                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-650 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-all cursor-pointer"
+                >
+                  Mark all as read
+                </button>
+                <button
+                  type="button"
+                  onClick={onClearAllNotifications}
+                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider bg-red-600/10 hover:bg-red-600 hover:text-white dark:bg-red-950/20 border border-red-500/10 rounded-xl text-red-600 dark:text-red-400 transition-all cursor-pointer"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Search and Classification Filters Block */}
@@ -1331,12 +1683,19 @@ export default function DashboardStudent({
               ));
             })()}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 5. USER PROFILE SETTINGS */}
       {activeScreen === 'profile' && (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="profile"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-2xl mx-auto space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1482,8 +1841,9 @@ export default function DashboardStudent({
               </div>
             </form>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Roster detail modal */}
       <SubjectDetailModal

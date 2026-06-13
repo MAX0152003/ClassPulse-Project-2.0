@@ -26,6 +26,7 @@ import DashboardFaculty from './components/DashboardFaculty';
 import DashboardAdmin from './components/DashboardAdmin';
 import AuthScreens from './components/AuthScreens';
 import AccessibilitySettings, { speakText } from './components/AccessibilitySettings';
+import SettingsPage from './components/Settings';
 import { 
   Wifi, 
   WifiOff, 
@@ -35,7 +36,14 @@ import {
   RefreshCw, 
   CheckCircle,
   HelpCircle,
-  Bell
+  Bell,
+  LayoutDashboard,
+  CalendarDays,
+  Scan,
+  MessageSquare,
+  Users,
+  Inbox,
+  UserCircle
 } from 'lucide-react';
 
 // Safe Local Storage Wrapper to prevent app crashes due to QuotaExceededError or browser iframe restrictions
@@ -156,6 +164,14 @@ export default function App() {
       theme: 'light', // default theme is now an elegant light/warm-slate vibe
       readAloud: false
     };
+  });
+
+  const [compactMode, setCompactMode] = React.useState(() => {
+    return safeStorage.getItem('cp_pref_compact_mode') === 'true';
+  });
+
+  const [colorAccent, setColorAccent] = React.useState(() => {
+    return safeStorage.getItem('cp_pref_color_accent') || 'emerald';
   });
 
   const [enrollments, setEnrollments] = React.useState<Enrollment[]>(() => {
@@ -378,17 +394,65 @@ export default function App() {
     safeStorage.removeItem('cp_user');
   };
 
+  const getBottomNavItems = () => {
+    if (!user) return [];
+    switch (user.role) {
+      case 'student':
+        return [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'schedule', label: 'Schedule', icon: CalendarDays },
+          { id: 'attendance', label: 'QR Scan', icon: Scan },
+          { id: 'messages', label: 'Messages', icon: MessageSquare }
+        ];
+      case 'faculty':
+        return [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'schedule-editor', label: 'Classes', icon: CalendarDays },
+          { id: 'qr-generator', label: 'QR Code', icon: Scan },
+          { id: 'excuse-inbox', label: 'Excuses', icon: Inbox }
+        ];
+      case 'admin':
+        return [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'users', label: 'Users', icon: Users },
+          { id: 'schedule-editor', label: 'Schedules', icon: CalendarDays },
+          { id: 'profile', label: 'Profile', icon: UserCircle }
+        ];
+    }
+  };
+
   // Student logs attendance via QR code simulation scan
   const handleRecordAttendance = (classId: string, status: 'present' | 'late') => {
     const matchedClass = classes.find(c => c.id === classId);
     if (!matchedClass) return;
 
     // A. AUTOMATIC ENROLLMENT SERVICE INTERCEPTOR
-    const isAlreadyEnrolled = enrollments.some(
+    const existingEnrollment = enrollments.find(
       e => e.classId === classId && (e.studentId === user?.studentId || e.studentEmail === user?.email)
     );
 
-    if (!isAlreadyEnrolled && user && user.role === 'student') {
+    if (existingEnrollment) {
+      if (existingEnrollment.deletedByStudent) {
+        // Automatically restore!
+        setEnrollments(prev => prev.map(e => {
+          if (e.id === existingEnrollment.id) {
+            return { ...e, deletedByStudent: false };
+          }
+          return e;
+        }));
+        
+        const restoreNotif: AppNotification = {
+          id: 'notif-restore-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+          title: 'Class Enrollment Restored',
+          message: `QR Scan success: Restored your active enrollment for ${matchedClass.code} (${matchedClass.name}) and connected your attend record history cleanly!`,
+          timestamp: 'Just Now',
+          type: 'success',
+          read: false
+        };
+        setNotifications(prev => [restoreNotif, ...prev]);
+        speakText(`Resumed class enrollment for ${matchedClass.name}`, accessibility.readAloud);
+      }
+    } else if (user && user.role === 'student') {
       const newEnrolID = 'enr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
       const newEnrollmentRecord: Enrollment = {
         id: newEnrolID,
@@ -450,6 +514,26 @@ export default function App() {
     };
 
     setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  const handleDropSubject = (classId: string) => {
+    setEnrollments(prev => prev.map(e => {
+      if (e.classId === classId && (e.studentId === user?.studentId || e.studentEmail === user?.email)) {
+        return { ...e, deletedByStudent: true };
+      }
+      return e;
+    }));
+    
+    const dropNotif: AppNotification = {
+      id: 'notif-drop-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+      title: 'Subject Removed',
+      message: `You dropped your local registration for this class. Note that your official register logs and attendance records with the Faculty remains fully unchanged and secure.`,
+      timestamp: 'Just Now',
+      type: 'warning',
+      read: false
+    };
+    setNotifications(prev => [dropNotif, ...prev]);
+    speakText("Subject removed from student dashboard. Faculty record remains unaffected.", accessibility.readAloud);
   };
 
   // Profile Update callback - ensures propagation to enrollments globally
@@ -582,6 +666,16 @@ export default function App() {
     }
   };
 
+  const handleClearAllNotifications = () => {
+    setNotifications([]);
+    speakText("Cleared all notifications", accessibility.readAloud);
+  };
+
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    speakText("Marked all notifications as read", accessibility.readAloud);
+  };
+
   // Clean, high density layout container matching Obsidian ClassPulse vibe
   const getThemeClass = (theme: 'light' | 'dark') => {
     switch (theme) {
@@ -595,7 +689,7 @@ export default function App() {
   return (
     <div 
       id="app-root-level-wrapper"
-      className={getThemeClass(accessibility.theme)}
+      className={`${getThemeClass(accessibility.theme)} theme-accent-${colorAccent} ${compactMode ? 'app-compact-mode' : ''}`}
     >
       
       {/* 1. AUTHENTICATOR ENVELOPE */}
@@ -657,14 +751,18 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Quick Accessibility floating button */}
+                {/* Quick Preferences routing button */}
                 <button
                   onClick={() => {
-                    setIsAccPanelOpen(!isAccPanelOpen);
-                    speakText(isAccPanelOpen ? "Settings closed" : "Settings opened", accessibility.readAloud);
+                    setActiveScreen('settings');
+                    speakText("Navigating to settings panel", accessibility.readAloud);
                   }}
                   type="button"
-                  className="p-2.5 rounded-xl border flex items-center justify-center cursor-pointer transition-all border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 text-zinc-600 dark:text-zinc-400"
+                  className={`p-2.5 rounded-xl border flex items-center justify-center cursor-pointer transition-all border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
+                    activeScreen === 'settings'
+                      ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 font-extrabold shadow-sm'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}
                   title="System Preferences & Preferences Panels"
                 >
                   <Settings className="w-4.5 h-4.5" />
@@ -688,7 +786,7 @@ export default function App() {
             )}
 
             {/* Primary content grid layout block */}
-            <main className="p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6 flex-1">
+            <main className="p-6 md:p-8 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 flex-1">
               
               {/* Accessibility options expansion widget */}
               {isAccPanelOpen && (
@@ -712,71 +810,116 @@ export default function App() {
                 </div>
               )}
 
-              {/* Dynamic screen layouts injection based on active role */}
-              {user.role === 'student' && (
-                <DashboardStudent
-                  activeScreen={activeScreen}
-                  setScreen={setActiveScreen}
-                  classes={classes}
-                  attendanceRecords={attendanceRecords}
-                  notifications={notifications}
-                  facultyStatuses={facultyStatuses}
+               {/* Dynamic screen layouts injection based on active role */}
+              {activeScreen === 'settings' ? (
+                <SettingsPage
                   userProfile={user}
-                  isOffline={isOffline}
                   accessibility={accessibility}
-                  enrollments={enrollments}
-                  onRecordAttendance={handleRecordAttendance}
                   onUpdateProfile={handleUpdateProfile}
-                  announcements={announcements}
-                  excuseLetters={excuseLetters}
-                  onAddExcuseLetter={(newReq: any) => setExcuseLetters(prev => [newReq, ...prev])}
+                  onUpdateAccessibility={setAccessibility}
+                  onUpdateCompactMode={setCompactMode}
+                  onUpdateColorAccent={setColorAccent}
+                  setScreen={setActiveScreen}
                 />
-              )}
+              ) : (
+                <>
+                  {user.role === 'student' && (
+                    <DashboardStudent
+                      activeScreen={activeScreen}
+                      setScreen={setActiveScreen}
+                      classes={classes}
+                      attendanceRecords={attendanceRecords}
+                      notifications={notifications}
+                      facultyStatuses={facultyStatuses}
+                      userProfile={user}
+                      isOffline={isOffline}
+                      accessibility={accessibility}
+                      enrollments={enrollments}
+                      onRecordAttendance={handleRecordAttendance}
+                      onUpdateProfile={handleUpdateProfile}
+                      onClearAllNotifications={handleClearAllNotifications}
+                      onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+                      announcements={announcements}
+                      excuseLetters={excuseLetters}
+                      onAddExcuseLetter={(newReq: any) => setExcuseLetters(prev => [newReq, ...prev])}
+                      onDropSubject={handleDropSubject}
+                    />
+                  )}
 
-              {user.role === 'faculty' && (
-                <DashboardFaculty
-                  activeScreen={activeScreen}
-                  setScreen={setActiveScreen}
-                  classes={classes}
-                  onAddClass={handleAddClass}
-                  onEditClass={handleEditClass}
-                  onDeleteClass={handleDeleteClass}
-                  userProfile={user}
-                  facultyStatus={facultyStatuses.find(f => f.name === user.name || f.id === 'fac-1')?.status || 'available'}
-                  onChangeFacultyStatus={handleChangeFacultyStatus}
-                  accessibility={accessibility}
-                  enrollments={enrollments}
-                  attendanceRecords={attendanceRecords}
-                  notifications={notifications}
-                  facultyStatuses={facultyStatuses}
-                  onUpdateProfile={handleUpdateProfile}
-                  announcements={announcements}
-                  excuseLetters={excuseLetters}
-                  onUpdateExcuseStatus={handleUpdateExcuseStatus}
-                  onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
-                />
-              )}
+                  {user.role === 'faculty' && (
+                    <DashboardFaculty
+                      activeScreen={activeScreen}
+                      setScreen={setActiveScreen}
+                      classes={classes}
+                      onAddClass={handleAddClass}
+                      onEditClass={handleEditClass}
+                      onDeleteClass={handleDeleteClass}
+                      userProfile={user}
+                      facultyStatus={facultyStatuses.find(f => f.name === user.name || f.id === 'fac-1')?.status || 'available'}
+                      onChangeFacultyStatus={handleChangeFacultyStatus}
+                      accessibility={accessibility}
+                      enrollments={enrollments}
+                      attendanceRecords={attendanceRecords}
+                      notifications={notifications}
+                      facultyStatuses={facultyStatuses}
+                      onUpdateProfile={handleUpdateProfile}
+                      onClearAllNotifications={handleClearAllNotifications}
+                      onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+                      announcements={announcements}
+                      excuseLetters={excuseLetters}
+                      onUpdateExcuseStatus={handleUpdateExcuseStatus}
+                      onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
+                    />
+                  )}
 
-              {user.role === 'admin' && (
-                <DashboardAdmin
-                  activeScreen={activeScreen}
-                  setScreen={setActiveScreen}
-                  classes={classes}
-                  onAddClass={handleAddClass}
-                  onEditClass={handleEditClass}
-                  onDeleteClass={handleDeleteClass}
-                  enrollments={enrollments}
-                  attendanceRecords={attendanceRecords}
-                  accessibility={accessibility}
-                  announcements={announcements}
-                  onUpdateAnnouncements={setAnnouncements}
-                  userProfile={user}
-                  onUpdateProfile={handleUpdateProfile}
-                  onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
-                />
+                  {user.role === 'admin' && (
+                    <DashboardAdmin
+                      activeScreen={activeScreen}
+                      setScreen={setActiveScreen}
+                      classes={classes}
+                      onAddClass={handleAddClass}
+                      onEditClass={handleEditClass}
+                      onDeleteClass={handleDeleteClass}
+                      enrollments={enrollments}
+                      attendanceRecords={attendanceRecords}
+                      accessibility={accessibility}
+                      announcements={announcements}
+                      onUpdateAnnouncements={setAnnouncements}
+                      userProfile={user}
+                      onUpdateProfile={handleUpdateProfile}
+                      onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
+                    />
+                  )}
+                </>
               )}
 
             </main>
+
+            {/* Mobile Bottom Navigation Bar (Deeply Adaptive, Thumb-Friendly) */}
+            <div className="md:hidden fixed bottom-4 left-4 right-4 z-40 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-850 px-3 py-2 flex justify-around items-center h-16 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
+              {getBottomNavItems().map(item => {
+                const Icon = item.icon;
+                const isActive = activeScreen === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveScreen(item.id);
+                      speakText(`Switched to ${item.label}`, accessibility.readAloud);
+                    }}
+                    type="button"
+                    className={`flex flex-col items-center justify-center gap-1 transition-all flex-1 py-1 cursor-pointer scale-100 active:scale-95 ${
+                      isActive 
+                        ? 'text-emerald-500 font-black' 
+                        : 'text-zinc-450 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 stroke-[2.5] text-emerald-500' : 'stroke-2 text-zinc-450 dark:text-zinc-450'}`} />
+                    <span className="text-[9px] font-black tracking-wider uppercase">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
           </div>
 

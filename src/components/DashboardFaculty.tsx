@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   ClassSession, 
   AppNotification, 
@@ -34,7 +35,8 @@ import {
   EyeOff,
   BellRing,
   Search,
-  Inbox
+  Inbox,
+  Download
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock from './AlarmClock';
@@ -57,6 +59,8 @@ interface DashboardFacultyProps {
   notifications: AppNotification[];
   facultyStatuses: FacultyStatus[];
   onUpdateProfile: (updated: UserProfile) => void;
+  onClearAllNotifications?: () => void;
+  onMarkAllNotificationsRead?: () => void;
   announcements?: Announcement[];
   excuseLetters?: any[];
   onUpdateExcuseStatus?: (id: string, status: 'pending' | 'valid' | 'invalid' | 'approved' | 'rejected') => void;
@@ -79,6 +83,8 @@ export default function DashboardFaculty({
   notifications,
   facultyStatuses,
   onUpdateProfile,
+  onClearAllNotifications,
+  onMarkAllNotificationsRead,
   announcements = [],
   excuseLetters = [],
   onUpdateExcuseStatus,
@@ -130,6 +136,82 @@ export default function DashboardFaculty({
 
   // Compute analytics data for active monitoring class
   const monClassRecords = attendanceRecords.filter(r => r.classId === selectedMonitoringClassId);
+
+  const handleExportSelectedClassAttendance = () => {
+    if (!activeMonClass) {
+      speakText("No class is currently selected for export.", accessibility.readAloud);
+      return;
+    }
+    
+    const headers = ["Student ID", "Student Name", "Class Code", "Class Name", "Date", "Time", "Status"];
+    const rows = monClassRecords.map(rec => [
+      rec.studentId || "N/A",
+      rec.studentName || "N/A",
+      rec.classCode || activeMonClass.code,
+      rec.className || activeMonClass.name,
+      rec.date,
+      rec.time,
+      rec.status.toUpperCase()
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => {
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${activeMonClass.code}_Attendance_${activeMonClass.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    speakText(`Successfully exported attendance ledger for ${activeMonClass.name} to CSV`, accessibility.readAloud);
+  };
+
+  const handleExportAllFacultyAttendance = () => {
+    const facultyClassIds = classes.map(c => c.id);
+    const filteredRecords = attendanceRecords.filter(r => facultyClassIds.includes(r.classId));
+    
+    const headers = ["Student ID", "Student Name", "Class Code", "Class Name", "Date", "Time", "Status"];
+    const rows = filteredRecords.map(rec => {
+      const cls = classes.find(c => c.id === rec.classId);
+      return [
+        rec.studentId || "N/A",
+        rec.studentName || "N/A",
+        rec.classCode || (cls ? cls.code : "N/A"),
+        rec.className || (cls ? cls.name : "N/A"),
+        rec.date,
+        rec.time,
+        rec.status.toUpperCase()
+      ];
+    });
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => {
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Faculty_Consolidated_Attendance_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    speakText(`Successfully exported all assigned classes attendance records to CSV`, accessibility.readAloud);
+  };
+
   const monClassPresents = monClassRecords.filter(r => r.status === 'present').length;
   const monClassLates = monClassRecords.filter(r => r.status === 'late').length;
   const monClassAbsents = monClassRecords.filter(r => r.status === 'absent').length;
@@ -170,6 +252,7 @@ export default function DashboardFaculty({
   // Modal triggers
   const [selectedClassDetail, setSelectedClassDetail] = React.useState<ClassSession | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = React.useState<boolean>(false);
+  const [hoveredFacultyTrendIndex, setHoveredFacultyTrendIndex] = React.useState<number | null>(null);
 
   // Form states for class adding/editing
   const [isFormOpen, setIsFormOpen] = React.useState(false);
@@ -341,10 +424,18 @@ export default function DashboardFaculty({
   return (
     <div className="space-y-6">
 
-      {/* 1. FACULTY INSIGHTS DASHBOARD */}
-      {activeScreen === 'dashboard' && (
-        <div className="space-y-6 animate-fade-in text-left">
-          {/* Welcome Header */}
+      <AnimatePresence mode="wait">
+        {/* 1. FACULTY INSIGHTS DASHBOARD */}
+        {activeScreen === 'dashboard' && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-6 text-left"
+          >
+            {/* Welcome Header */}
           <div className="p-6 md:p-8 rounded-3xl relative overflow-hidden transition-all duration-300 bg-gradient-to-br from-indigo-900 via-zinc-900 to-emerald-950 text-white shadow-xl shadow-emerald-500/5">
             <div className="relative z-10 space-y-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 text-emerald-400">
@@ -523,40 +614,134 @@ export default function DashboardFaculty({
               </div>
 
               {/* Attendance trends spline plot */}
-              <div className="w-full h-44 rounded-2xl border border-zinc-150 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30 p-3 relative flex items-end">
-                <svg viewBox="0 0 400 150" className="w-full h-full overflow-visible">
-                  <defs>
-                    <linearGradient id="facAttendGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  
-                  {/* Grid lines */}
-                  <line x1="10" y1="30" x2="390" y2="30" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
-                  <line x1="10" y1="70" x2="390" y2="70" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
-                  <line x1="10" y1="110" x2="390" y2="110" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" strokeDasharray="2 2" />
+              {(() => {
+                const facultyAttendanceTrends = [
+                  { label: 'Monday', shortLabel: 'M', value: 60, scans: 142, averageTime: '08:42 AM', x: 20, y: 120, date: 'Monday, June 8, 2026', syllabus: 'Intro & Course Overview' },
+                  { label: 'Tuesday', shortLabel: 'T', value: 75, scans: 168, averageTime: '08:48 AM', x: 100, y: 80, date: 'Tuesday, June 9, 2026', syllabus: 'Lecture 1: Database Schemas' },
+                  { label: 'Wednesday', shortLabel: 'W', value: 85, scans: 175, averageTime: '08:45 AM', x: 180, y: 55, date: 'Wednesday, June 10, 2026', syllabus: 'Lab session: Basic CRUD Queries' },
+                  { label: 'Thursday', shortLabel: 'T', value: 89, scans: 191, averageTime: '08:41 AM', x: 260, y: 50, date: 'Thursday, June 11, 2026', syllabus: 'Lecture 2: Indexing & Performance' },
+                  { label: 'Friday', shortLabel: 'F', value: 94, scans: 198, averageTime: '08:38 AM', x: 340, y: 20, date: 'Friday, June 12, 2026', syllabus: 'Topic Quiz & Weekly Review' }
+                ];
 
-                  {/* Graph Line */}
-                  <path d="M 20 120 L 100 80 Q 180 30, 260 50 T 380 20 L 380 150 L 20 150 Z" fill="url(#facAttendGrad)" />
-                  <path d="M 20 120 L 100 80 Q 180 30, 260 50 T 380 20" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
-                  
-                  <circle cx="100" cy="80" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2" />
-                  <circle cx="260" cy="50" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2" />
-                  <circle cx="380" cy="20" r="4.5" fill="#121212" stroke="#10b981" strokeWidth="2PX" />
+                return (
+                  <div className="w-full h-44 rounded-2xl border border-zinc-150 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30 p-3 relative flex items-end">
+                    <svg viewBox="0 0 400 150" className="w-full h-full overflow-visible">
+                      <defs>
+                        <linearGradient id="facAttendGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      
+                      {/* Grid lines */}
+                      <line x1="10" y1="30" x2="390" y2="30" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
+                      <line x1="10" y1="70" x2="390" y2="70" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" />
+                      <line x1="10" y1="110" x2="390" y2="110" stroke="rgba(120,120,120,0.1)" strokeWidth="0.8" strokeDasharray="2 2" />
 
-                  <text x="100" y="65" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">75%</text>
-                  <text x="260" y="35" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">89%</text>
-                  <text x="380" y="10" fontSize="8" fontWeight="black" fill="#10b981" textAnchor="middle" className="font-mono">94%</text>
+                      {/* Filled Area */}
+                      <path d="M 20 120 L 100 80 L 180 55 L 260 50 L 340 20 L 340 135 L 20 135 Z" fill="url(#facAttendGrad)" />
+                      
+                      {/* Connected Line */}
+                      <path d="M 20 120 L 100 80 L 180 55 L 260 50 L 340 20" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
+                      
+                      {/* Interactive nodes */}
+                      {facultyAttendanceTrends.map((d, idx) => {
+                        const isHovered = hoveredFacultyTrendIndex === idx;
+                        return (
+                          <g key={idx}>
+                            {/* Invisible touch area */}
+                            <circle 
+                              cx={d.x} 
+                              cy={d.y} 
+                              r="16" 
+                              fill="transparent" 
+                              className="cursor-pointer"
+                              onMouseEnter={() => setHoveredFacultyTrendIndex(idx)}
+                              onMouseLeave={() => setHoveredFacultyTrendIndex(null)}
+                            />
+                            {/* Inner hovered pulse ring */}
+                            {isHovered && (
+                              <circle 
+                                cx={d.x} 
+                                cy={d.y} 
+                                r="8" 
+                                fill="none" 
+                                stroke="#10b981" 
+                                strokeWidth="1.5" 
+                                className="animate-ping opacity-60"
+                              />
+                            )}
+                            {/* Center point circle */}
+                            <circle 
+                              cx={d.x} 
+                              cy={d.y} 
+                              r={isHovered ? 6 : 4} 
+                              fill="#121212" 
+                              stroke="#10b981" 
+                              strokeWidth={isHovered ? 3 : 2} 
+                            />
+                            {/* Hover highlight text label */}
+                            <text 
+                              x={d.x} 
+                              y={d.y - 12} 
+                              fontSize="8" 
+                              fontWeight="black" 
+                              fill="#10b981" 
+                              textAnchor="middle" 
+                              className="font-mono"
+                            >
+                              {d.value}%
+                            </text>
+                          </g>
+                        );
+                      })}
 
-                  {/* Day labels */}
-                  <text x="20" y="142" fontSize="8" fill="#888">Monday</text>
-                  <text x="100" y="142" fontSize="8" fill="#888">Tuesday</text>
-                  <text x="180" y="142" fontSize="8" fill="#888">Wednesday</text>
-                  <text x="260" y="142" fontSize="8" fill="#888">Thursday</text>
-                  <text x="340" y="142" fontSize="8" fill="#888">Friday</text>
-                </svg>
-              </div>
+                      {/* Day labels */}
+                      <text x="20" y="142" fontSize="8" fill="#888">Monday</text>
+                      <text x="100" y="142" fontSize="8" fill="#888">Tuesday</text>
+                      <text x="180" y="142" fontSize="8" fill="#888">Wednesday</text>
+                      <text x="260" y="142" fontSize="8" fill="#888">Thursday</text>
+                      <text x="340" y="142" fontSize="8" fill="#888">Friday</text>
+                    </svg>
+
+                    {/* Highly Polished Interactive Precise Tooltip */}
+                    {hoveredFacultyTrendIndex !== null && (() => {
+                      const data = facultyAttendanceTrends[hoveredFacultyTrendIndex];
+                      return (
+                        <div 
+                          className="absolute z-50 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-56 text-left"
+                          style={{
+                            left: `${(data.x / 400) * 100}%`,
+                            bottom: `${(150 - data.y + 12) / 150 * 100}%`,
+                            transform: 'translateX(-50%)',
+                          }}
+                        >
+                          <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
+                            <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{data.label} (Week 4)</span>
+                            <span className="text-[8px] font-mono text-zinc-500">FACULTY CORE</span>
+                          </div>
+                          <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
+                          <p className="text-[9.5px] italic text-zinc-300">"{data.syllabus}"</p>
+                          <div className="grid grid-cols-2 gap-2.5 mt-1 border-t border-zinc-900 pt-1.5 font-mono text-[9px]">
+                            <div>
+                              <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Scans Today</p>
+                              <p className="font-extrabold text-zinc-200">{data.scans} students</p>
+                            </div>
+                            <div>
+                              <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Avg Check-in</p>
+                              <p className="font-extrabold text-amber-400">{data.averageTime}</p>
+                            </div>
+                          </div>
+                          <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
+                            Attendance Rate: <strong className="text-emerald-400 text-[10px]">{data.value}%</strong>
+                          </p>
+                          <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-805 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
             </div>            {/* Student Performance Analytics */}
             <div className="lg:col-span-5 p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-850/80 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
               <div>
@@ -813,7 +998,7 @@ export default function DashboardFaculty({
                 <button
                   onClick={() => setScreen('qr-generator')}
                   type="button"
-                  className="w-full text-center py-2.5 bg-emerald-505 bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-black uppercase tracking-widest rounded-xl cursor-pointer transition-all active:scale-95"
+                  className="w-full text-center py-2.5 bg-emerald-550 bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-black uppercase tracking-widest rounded-xl cursor-pointer transition-all active:scale-95"
                 >
                   Open QR Generator
                 </button>
@@ -821,12 +1006,19 @@ export default function DashboardFaculty({
             </div>
 
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 2. SUBJECTS & SCHEDULE EDITOR SCREEN */}
       {activeScreen === 'schedule-editor' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="schedule-editor"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1028,12 +1220,19 @@ export default function DashboardFaculty({
               );
             })}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 3. QR CODES ATTENDANCE PASSCODE GENERATOR VIEW */}
       {activeScreen === 'qr-generator' && (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="qr-generator"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-2xl mx-auto space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1110,7 +1309,7 @@ export default function DashboardFaculty({
                 <div className="p-1 bg-zinc-100 dark:bg-zinc-900 rounded-lg shadow-xs border border-zinc-200 dark:border-zinc-800">
                   {qrToken && qrToken !== 'STANDBY' && qrToken !== 'EXPIRED' ? (
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=1&data=${encodeURIComponent(qrToken)}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=2&data=${encodeURIComponent(JSON.stringify({ classId: activeQRClass, qrToken: qrToken }))}`}
                       alt="ClassPulse Active Session QR Code"
                       className="w-40 h-40 rounded object-contain filter brightness-[0.92] contrast-125 dark:brightness-[0.78] dark:contrast-[1.10]"
                       referrerPolicy="no-referrer"
@@ -1260,12 +1459,19 @@ export default function DashboardFaculty({
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 4. NOTIFICATIONS VIEW */}
       {activeScreen === 'notifications' && (
-        <div className="max-w-xl mx-auto space-y-4 animate-fade-in text-left">
+        <motion.div
+          key="notifications"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-xl mx-auto space-y-4 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1283,8 +1489,26 @@ export default function DashboardFaculty({
                 <BellRing className="w-5 h-5 text-emerald-500" />
                 Notification logs
               </h2>
-              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
+              <p className="text-xs text-zinc-405 text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
             </div>
+            {notifications.length > 0 && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={onMarkAllNotificationsRead}
+                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-650 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-all cursor-pointer"
+                >
+                  Mark all as read
+                </button>
+                <button
+                  type="button"
+                  onClick={onClearAllNotifications}
+                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider bg-red-600/10 hover:bg-red-600 hover:text-white dark:bg-red-950/20 border border-red-500/10 rounded-xl text-red-600 dark:text-red-400 transition-all cursor-pointer"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Search and Classification Filters Block */}
@@ -1433,12 +1657,19 @@ export default function DashboardFaculty({
               ));
             })()}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 5. PROFILE TAB */}
       {activeScreen === 'profile' && (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="profile"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-2xl mx-auto space-y-6 text-left"
+        >
           <div className="pb-1">
             <button 
               onClick={() => setScreen('dashboard')} 
@@ -1543,7 +1774,7 @@ export default function DashboardFaculty({
               </div>
             </form>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Roster detail modal */}
@@ -1558,7 +1789,14 @@ export default function DashboardFaculty({
 
       {/* Messages tab screen */}
       {activeScreen === 'messages' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="messages"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           <div>
             <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
               <MessageSquare className="w-5.5 h-5.5 text-blue-600 animate-pulse" />
@@ -1573,12 +1811,19 @@ export default function DashboardFaculty({
             accessibility={accessibility} 
             onBack={() => setScreen('dashboard')}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* 5B. EXCUSE LETTERS INBOX VIEW */}
       {activeScreen === 'excuse-inbox' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="excuse-inbox"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           <div>
             <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
               <Inbox className="w-5.5 h-5.5 text-emerald-500 animate-pulse" />
@@ -1676,12 +1921,19 @@ export default function DashboardFaculty({
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 6. STUDENTS MONITORING VIEW */}
       {activeScreen === 'students-monitoring' && (
-        <div className="space-y-6 animate-fade-in text-left">
+        <motion.div
+          key="students-monitoring"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left"
+        >
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -1700,6 +1952,25 @@ export default function DashboardFaculty({
                 Active Student Rosters & At-Risk Monitoring
               </h2>
               <p className="text-xs text-zinc-400">Roster lists and interactive health metrics for your assigned class rosters.</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
+              <button
+                type="button"
+                onClick={handleExportSelectedClassAttendance}
+                className="px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-805 dark:text-zinc-200 text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95"
+              >
+                <Download className="w-4 h-4 text-emerald-500" />
+                <span>Export Class CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportAllFacultyAttendance}
+                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95"
+              >
+                <Download className="w-4 h-4 text-black" />
+                <span>Export All CSV</span>
+              </button>
             </div>
           </div>
 
@@ -1964,8 +2235,9 @@ export default function DashboardFaculty({
             </div>
           )}
 
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Faculty Commencement Alarm Clock popup modal */}
       {isFacultyAlarmOpen && (
@@ -2057,6 +2329,26 @@ export default function DashboardFaculty({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating Admin Customer Support Service Icon Bubble */}
+      {activeScreen !== 'messages' && (
+        <button
+          type="button"
+          onClick={() => {
+            setScreen('messages');
+            speakText("Opening Support Chat with administrators.", accessibility.readAloud);
+          }}
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-emerald-600 hover:bg-emerald-555 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] hover:scale-110 active:scale-95 transition-all group cursor-pointer border border-emerald-500/25"
+          title="Message Admin for Support"
+        >
+          <div className="absolute -top-12 right-0 bg-zinc-900 text-white text-[10px] py-1 px-2.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none font-bold uppercase tracking-wider shadow-md">
+            Message Admin 💬
+          </div>
+          <svg className="w-6 h-6 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        </button>
       )}
 
     </div>

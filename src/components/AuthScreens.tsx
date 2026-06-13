@@ -323,16 +323,15 @@ export default function AuthScreens({ onLoginSuccess, accessibility }: AuthScree
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 block">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block text-left">Academic Role</label>
                 <select
                   value={regRole}
                   onChange={(e) => setRegRole(e.target.value as Role)}
-                  className="w-full text-xs p-2.5 rounded-xl border focus:outline-none border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
+                  className="w-full text-xs p-2.5 rounded-xl border focus:outline-none border-zinc-200 bg-white dark:border-zinc-805 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
                 >
                   <option value="student">Student Portal</option>
                   <option value="faculty">Faculty Instructor</option>
-                  <option value="admin">Campus Registrar Admin</option>
                 </select>
               </div>
 

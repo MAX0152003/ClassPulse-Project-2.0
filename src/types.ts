@@ -75,6 +75,7 @@ export interface Enrollment {
   studentAvatar: string;
   classId: string;
   enrolledAt: string;
+  deletedByStudent?: boolean;
 }
 
 export interface Announcement {
@@ -105,8 +106,9 @@ export interface LeaveRequest {
   startDate: string;
   endDate: string;
   reason: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'valid' | 'invalid';
   createdAt: string;
   attachmentName?: string;
   attachmentData?: string;
+  attachmentImg?: string;
 }

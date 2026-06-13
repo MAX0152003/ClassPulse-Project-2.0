@@ -13,7 +13,8 @@ import {
   Activity,
   ChevronLeft,
   MessageSquare,
-  Inbox
+  Inbox,
+  Settings
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 
@@ -63,6 +64,7 @@ export default function Sidebar({
           { id: 'messages', label: 'Messages', icon: MessageSquare },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
+          { id: 'settings', label: 'Settings', icon: Settings },
         ];
       case 'faculty':
         return [
@@ -74,6 +76,7 @@ export default function Sidebar({
           { id: 'messages', label: 'Messages', icon: MessageSquare },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
+          { id: 'settings', label: 'Settings', icon: Settings },
         ];
       case 'admin':
         return [
@@ -82,6 +85,7 @@ export default function Sidebar({
           { id: 'schedule-editor', label: 'Schedules', icon: CalendarDays },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
+          { id: 'settings', label: 'Settings', icon: Settings },
         ];
     }
   };

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ClassSession, Enrollment, AttendanceRecord, UserProfile, FacultyStatus } from '../types';
 import AttendanceGraph from './AttendanceGraph';
-import { X, Calendar, Clock, MapPin, User, Users, ShieldAlert, CheckCircle, Activity } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, User, Users, ShieldAlert, CheckCircle, Activity, Download } from 'lucide-react';
 
 interface SubjectDetailModalProps {
   isOpen: boolean;
@@ -36,6 +36,37 @@ export default function SubjectDetailModal({
       case 'in-class': return 'bg-amber-500';
       default: return 'bg-zinc-400';
     }
+  };
+
+  const handleExportCSV = () => {
+    const classRecords = records.filter(r => r.classId === cls.id);
+    const headers = ["Student ID", "Student Name", "Class Code", "Course Name", "Session Date", "Check-in Time", "Attendance Status"];
+    const rows = classRecords.map(rec => [
+      rec.studentId || "N/A",
+      rec.studentName || "N/A",
+      rec.classCode || cls.code,
+      rec.className || cls.name,
+      rec.date,
+      rec.time,
+      rec.status.toUpperCase()
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => {
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${cls.code}_Roster_Attendance_${cls.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -181,7 +212,17 @@ export default function SubjectDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-850 flex justify-end">
+        <div className="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-850 flex items-center justify-between gap-3">
+          <button
+            onClick={handleExportCSV}
+            type="button"
+            className="px-4 py-2 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 text-xs font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Export roster attendance dataset as CSV spreadsheet"
+          >
+            <Download className="w-3.5 h-3.5 text-black" />
+            <span>Export Roster CSV</span>
+          </button>
+
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-zinc-900 dark:bg-zinc-800 text-white text-xs font-bold uppercase cursor-pointer hover:bg-zinc-850 dark:hover:bg-zinc-700 transition-colors"

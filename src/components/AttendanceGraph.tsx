@@ -103,21 +103,45 @@ export default function AttendanceGraph({ classId, classCode, className, records
             display: false,
           },
           tooltip: {
-            backgroundColor: '#1c1c1f',
+            backgroundColor: '#09090b',
             titleColor: '#f4f4f5',
+            titleFont: {
+              family: 'JetBrains Mono, monospace',
+              size: 11,
+              weight: 'bold'
+            },
+            bodyFont: {
+              family: 'Inter, sans-serif',
+              size: 11
+            },
             bodyColor: '#10b981',
             borderColor: '#27272a',
-            borderWidth: 1,
-            padding: 10,
+            borderWidth: 1.5,
+            padding: 12,
             displayColors: false,
             callbacks: {
+              title: (tooltipItems) => {
+                const index = tooltipItems[0].dataIndex;
+                if (classRecords[index]) {
+                  const r = classRecords[index];
+                  try {
+                    const d = new Date(r.date);
+                    return `🗓️ ${d.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+                  } catch {
+                    return `🗓️ Date: ${r.date}`;
+                  }
+                }
+                return '🗓️ Reference Period';
+              },
               label: (context) => {
                 const index = context.dataIndex;
                 if (classRecords[index]) {
                   const r = classRecords[index];
-                  return `Status: ${r.status.toUpperCase()} (${r.time})`;
+                  const statusLabel = r.status.toUpperCase();
+                  const timeInfo = r.time ? ` at ${r.time}` : ' (No logs)';
+                  return `Status: ${statusLabel}${timeInfo}`;
                 }
-                return 'Active Session Standard: PRESENT';
+                return 'Standard Status: PRESENT';
               }
             }
           }

@@ -174,9 +174,18 @@ export const DEFAULT_FACULTY_PROFILE: UserProfile = {
 
 export const DEFAULT_ADMIN_PROFILE: UserProfile = {
   id: 'admin-01',
-  name: 'Admin Strator',
+  name: 'Master Admin One',
   email: 'admin@msu.edu.ph',
   role: 'admin',
-  avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150',
-  department: 'Academic Affairs'
+  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150',
+  department: 'Academic Registrar Board'
+};
+
+export const SECOND_ADMIN_PROFILE: UserProfile = {
+  id: 'admin-02',
+  name: 'Master Admin Two',
+  email: 'admin2@msu.edu.ph',
+  role: 'admin',
+  avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=150',
+  department: 'Academic Control Center'
 };

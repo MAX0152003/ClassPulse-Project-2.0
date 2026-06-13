@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   ClassSession, 
   UserProfile, 
@@ -30,7 +30,8 @@ import {
   Edit,
   Search,
   Megaphone,
-  User
+  User,
+  Download
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import SubjectDetailModal from './SubjectDetailModal';
@@ -155,6 +156,13 @@ export default function DashboardAdmin({
   // Directory filter state
   const [directoryRoleFilter, setDirectoryRoleFilter] = React.useState<'all' | 'student' | 'faculty'>('all');
 
+  // Local edit states
+  const [editingUser, setEditingUser] = React.useState<MockUser | null>(null);
+  const [editUserName, setEditUserName] = React.useState('');
+  const [editUserEmail, setEditUserEmail] = React.useState('');
+  const [editUserUid, setEditUserUid] = React.useState('');
+  const [editUserDep, setEditUserDep] = React.useState('');
+
   // Local states for announcements, searching, and profile
   const [userDirectorySearch, setUserDirectorySearch] = React.useState('');
   
@@ -182,6 +190,8 @@ export default function DashboardAdmin({
   // Clickable Course detail interactive modal states
   const [selectedClassDetail, setSelectedClassDetail] = React.useState<ClassSession | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
+  const [hoveredTrendIndex, setHoveredTrendIndex] = React.useState<number | null>(null);
+  const [hoveredEnrollmentIndex, setHoveredEnrollmentIndex] = React.useState<number | null>(null);
 
   // Add User Form modal
   const [isUserFormOpen, setIsUserFormOpen] = React.useState(false);
@@ -195,6 +205,89 @@ export default function DashboardAdmin({
   const studentCount = usersList.filter(u => u.role === 'student').length + 240; // baseline 245
   const facultyCount = usersList.filter(u => u.role === 'faculty').length + 26; // baseline 28
   const departmentsList = ['Computer Science', 'Information Technology', 'Software Engineering', 'Computer Engineering', 'Information Systems'];
+
+  const handleExportAllGlobalAttendance = () => {
+    if (attendanceRecords.length === 0) {
+      speakText("No attendance records found to export.", accessibility.readAloud);
+      alert("The attendance records ledger is currently empty.");
+      return;
+    }
+    
+    const headers = ["Student ID", "Student Name", "Class Code", "Course Name", "Session Date", "Check-in Time", "Attendance Status"];
+    const rows = attendanceRecords.map(rec => {
+      const cls = classes.find(c => c.id === rec.classId);
+      return [
+        rec.studentId || "N/A",
+        rec.studentName || "N/A",
+        rec.classCode || (cls ? cls.code : "N/A"),
+        rec.className || (cls ? cls.name : "N/A"),
+        rec.date,
+        rec.time,
+        rec.status.toUpperCase()
+      ];
+    });
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => {
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `MSU_University_Attendance_Consolidated_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    speakText("Consolidated attendance ledger successfully exported to CSV file for archiving", accessibility.readAloud);
+  };
+
+  const handleExportClassAttendance = (classId: string) => {
+    const cls = classes.find(c => c.id === classId);
+    if (!cls) return;
+    
+    const filteredRecords = attendanceRecords.filter(r => r.classId === classId);
+    if (filteredRecords.length === 0) {
+      speakText(`No attendance records found for ${cls.name}`, accessibility.readAloud);
+      alert(`There are currently no registered attendance logs in the database for course ${cls.code} - ${cls.name}.`);
+      return;
+    }
+    
+    const headers = ["Student ID", "Student Name", "Class Code", "Course Name", "Session Date", "Check-in Time", "Attendance Status"];
+    const rows = filteredRecords.map(rec => [
+      rec.studentId || "N/A",
+      rec.studentName || "N/A",
+      rec.classCode || cls.code,
+      rec.className || cls.name,
+      rec.date,
+      rec.time,
+      rec.status.toUpperCase()
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => {
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${cls.code}_Attendance_Roster_${cls.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    speakText(`Course attendance roster for ${cls.name} successfully exported`, accessibility.readAloud);
+  };
 
   const handleAddUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,6 +321,39 @@ export default function DashboardAdmin({
       setUsersList(usersList.filter(u => u.id !== id));
       speakText(`${name} removed successfully from student and faculty registries.`, accessibility.readAloud);
     }
+  };
+
+  const handleStartEditUser = (user: MockUser) => {
+    setEditingUser(user);
+    setEditUserName(user.name);
+    setEditUserEmail(user.email);
+    setEditUserUid(user.uid);
+    setEditUserDep(user.department);
+  };
+
+  const handleEditUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editUserName || !editUserEmail || !editUserUid) {
+      alert("Please fill in names, email, and ID coordinates.");
+      return;
+    }
+    
+    setUsersList(prev => prev.map(u => {
+      if (u.id === editingUser.id) {
+        return {
+          ...u,
+          name: editUserName,
+          email: editUserEmail,
+          uid: editUserUid,
+          department: editUserDep
+        };
+      }
+      return u;
+    }));
+    
+    speakText(`User details for ${editUserName} successfully updated.`, accessibility.readAloud);
+    setEditingUser(null);
   };
 
   const handleSaveAnnouncement = (e: React.FormEvent) => {
@@ -319,8 +445,16 @@ export default function DashboardAdmin({
   return (
     <div className="space-y-6">
 
-      {activeScreen === 'dashboard' && (
-        <div className="space-y-6 animate-fade-in text-left">
+      <AnimatePresence mode="wait">
+        {activeScreen === 'dashboard' && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-6 text-left"
+          >
           
           {/* Animated Dashboard Stats Panel */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -379,14 +513,11 @@ export default function DashboardAdmin({
               </button>
 
               <button 
-                onClick={() => {
-                  speakText("Bypassing credentials lock. Exporting system attendance log files in Microsoft Excel spreadsheet format.", accessibility.readAloud);
-                  alert("Triggering Microsoft Excel CSV formatted logs download stream...");
-                }}
+                onClick={handleExportAllGlobalAttendance}
                 className="p-3 text-left rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-amber-500/30 bg-zinc-50/50 dark:bg-zinc-900/20 hover:bg-zinc-50 dark:hover:bg-amber-500/5 transition-all text-zinc-850 dark:text-zinc-200 cursor-pointer"
               >
                 <div className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg inline-block text-xs mb-2">
-                  <TrendingUp className="w-4 h-4" />
+                  <Download className="w-4 h-4" />
                 </div>
                 <h4 className="text-xs font-black">Export Analytics</h4>
                 <p className="text-[10px] text-zinc-400 mt-1">Download attendance sheet</p>
@@ -420,10 +551,21 @@ export default function DashboardAdmin({
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">Cross-referencing student registrations and daily attendance trends</p>
                 </div>
-                {/* Visual selector pills */}
-                <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl text-[10px] font-bold">
-                  <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 text-emerald-555 shadow-xs uppercase">Daily logs</span>
-                  <span className="px-2.5 py-1 text-zinc-500 uppercase cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg">Historical overview</span>
+                {/* Visual selector pills & Fast CSV dispatcher */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl text-[10px] font-bold">
+                    <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 text-emerald-555 shadow-xs uppercase">Daily logs</span>
+                    <span className="px-2.5 py-1 text-zinc-500 uppercase cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg">Historical overview</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExportAllGlobalAttendance}
+                    className="px-3 py-1.5 bg-zinc-900 dark:bg-zinc-900 hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 duration-100"
+                    title="Export all system attendance logs"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Export Logs CSV</span>
+                  </button>
                 </div>
               </div>
 
@@ -431,64 +573,255 @@ export default function DashboardAdmin({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
                 {/* SVG spline area plot: Attendance Daily Logs */}
-                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-405 block">Attendance logs trends</span>
-                  <div className="w-full h-44 mt-3 relative flex items-end">
-                    <svg viewBox="0 0 350 150" className="w-full h-full overflow-visible">
-                      <defs>
-                        <linearGradient id="attendanceGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M 20 120 Q 80 50, 140 70 T 260 30 T 330 40 L 330 150 L 20 150 Z" fill="url(#attendanceGrad)" />
-                      <path d="M 20 120 Q 80 50, 140 70 T 260 30 T 330 40" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
-                      <circle cx="140" cy="70" r="4" fill="#121212" stroke="#10b981" strokeWidth="2.5" />
-                      <circle cx="260" cy="30" r="4" fill="#121212" stroke="#10b981" strokeWidth="2.5" />
-                      <circle cx="330" cy="40" r="4" fill="#121212" stroke="#10b981" strokeWidth="2.5" />
-                      
-                      <text x="140" y="52" fontSize="8" fill="#10b981" fontWeight="bold" textAnchor="middle" className="font-mono">82%</text>
-                      <text x="260" y="15" fontSize="8" fill="#10b981" fontWeight="bold" textAnchor="middle" className="font-mono">92%</text>
+                {(() => {
+                  const dailyAttendanceData = [
+                    { label: 'Monday', shortLabel: 'M', value: 68, active: 110, late: 15, absent: 35, x: 20, y: 120, date: 'Monday, June 8, 2026' },
+                    { label: 'Tuesday', shortLabel: 'T', value: 75, active: 135, late: 12, absent: 13, x: 80, y: 75, date: 'Tuesday, June 9, 2026' },
+                    { label: 'Wednesday', shortLabel: 'W', value: 82, active: 150, late: 32, absent: 18, x: 140, y: 80, date: 'Wednesday, June 10, 2026' },
+                    { label: 'Thursday', shortLabel: 'T', value: 85, active: 165, late: 25, absent: 15, x: 200, y: 62, date: 'Thursday, June 11, 2026' },
+                    { label: 'Friday', shortLabel: 'F', value: 92, active: 189, late: 15, absent: 10, x: 260, y: 30, date: 'Friday, June 12, 2026' },
+                    { label: 'Saturday', shortLabel: 'S', value: 65, active: 45, late: 5, absent: 15, x: 320, y: 100, date: 'Saturday, June 13, 2026' }
+                  ];
 
-                      {/* Day Marks */}
-                      <text x="20" y="145" fontSize="8" fill="#888">M</text>
-                      <text x="80" y="145" fontSize="8" fill="#888">T</text>
-                      <text x="140" y="145" fontSize="8" fill="#888">W</text>
-                      <text x="200" y="145" fontSize="8" fill="#888">T</text>
-                      <text x="260" y="145" fontSize="8" fill="#888">F</text>
-                    </svg>
-                  </div>
-                  <p className="text-[10px] text-zinc-400 mt-2 text-left">Aggregated attendance peaks on Fridays at <b>92% completion rate</b>.</p>
-                </div>
+                  return (
+                    <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30 relative">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-405 block text-left">Attendance logs trends</span>
+                      <div className="w-full h-44 mt-3 relative flex items-end">
+                        <svg viewBox="0 0 350 150" className="w-full h-full overflow-visible">
+                          <defs>
+                            <linearGradient id="attendanceGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                            </linearGradient>
+                          </defs>
+
+                          {/* Area path */}
+                          <path d="M 20 120 L 80 75 L 140 80 L 200 62 L 260 30 L 320 100 L 320 135 L 20 135 Z" fill="url(#attendanceGrad)" />
+                          
+                          {/* Connected line path */}
+                          <path d="M 20 120 L 80 75 L 140 80 L 200 62 L 260 30 L 320 100" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
+                          
+                          {/* Interactive coordinates points */}
+                          {dailyAttendanceData.map((d, idx) => {
+                            const isHovered = hoveredTrendIndex === idx;
+                            return (
+                              <g key={idx}>
+                                {/* Transparent expanded hover target */}
+                                <circle 
+                                  cx={d.x} 
+                                  cy={d.y} 
+                                  r="16" 
+                                  fill="transparent" 
+                                  className="cursor-pointer"
+                                  onMouseEnter={() => setHoveredTrendIndex(idx)}
+                                  onMouseLeave={() => setHoveredTrendIndex(null)}
+                                />
+                                {isHovered && (
+                                  <circle 
+                                    cx={d.x} 
+                                    cy={d.y} 
+                                    r="8" 
+                                    fill="none" 
+                                    stroke="#10b981" 
+                                    strokeWidth="1.5" 
+                                    className="animate-ping opacity-65"
+                                  />
+                                )}
+                                <circle 
+                                  cx={d.x} 
+                                  cy={d.y} 
+                                  r={isHovered ? 6 : 4} 
+                                  fill="#121212" 
+                                  stroke="#10b981" 
+                                  strokeWidth={isHovered ? 3 : 2.5}
+                                  className="transition-all duration-150"
+                                />
+                                <text 
+                                  x={d.x} 
+                                  y={d.y - 12} 
+                                  fontSize="8" 
+                                  fill="#10b981" 
+                                  fontWeight={isHovered ? "black" : "bold"} 
+                                  textAnchor="middle" 
+                                  className="font-mono"
+                                >
+                                  {d.value}%
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Day Marks */}
+                          <text x="20" y="145" fontSize="8" fill="#888">M</text>
+                          <text x="80" y="145" fontSize="8" fill="#888">T</text>
+                          <text x="140" y="145" fontSize="8" fill="#888">W</text>
+                          <text x="200" y="145" fontSize="8" fill="#888">T</text>
+                          <text x="260" y="145" fontSize="8" fill="#888">F</text>
+                          <text x="320" y="145" fontSize="8" fill="#888">S</text>
+                        </svg>
+
+                        {/* Custom Rich Interactive Tooltip popup */}
+                        {hoveredTrendIndex !== null && (() => {
+                          const data = dailyAttendanceData[hoveredTrendIndex];
+                          return (
+                            <div 
+                              className="absolute z-20 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
+                              style={{
+                                left: `${(data.x / 350) * 100}%`,
+                                bottom: `${(150 - data.y + 12) / 150 * 100}%`,
+                                transform: 'translateX(-50%)',
+                              }}
+                            >
+                              <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
+                                <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{data.label} Logs</span>
+                                <span className="text-[8px] font-mono text-zinc-500">ADM CORE</span>
+                              </div>
+                              <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
+                              
+                              <div className="grid grid-cols-3 gap-1 mt-1 text-[9px] font-mono">
+                                <div className="bg-emerald-500/10 p-1 rounded text-emerald-300">
+                                  <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Pres</p>
+                                  <p className="font-extrabold">{data.active}</p>
+                                </div>
+                                <div className="bg-amber-500/10 p-1 rounded text-amber-300">
+                                  <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Late</p>
+                                  <p className="font-extrabold">{data.late}</p>
+                                </div>
+                                <div className="bg-red-500/10 p-1 rounded text-red-300">
+                                  <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Abs</p>
+                                  <p className="font-extrabold">{data.absent}</p>
+                                </div>
+                              </div>
+                              
+                              <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
+                                Avg Attendance: <strong className="text-emerald-400 text-[10px]">{data.value}%</strong>
+                              </p>
+                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-2 text-left">Aggregated attendance peaks on Fridays at <b>92% completion rate</b>.</p>
+                    </div>
+                  );
+                })()}
 
                 {/* SVG spline area plot: Enrollment progression */}
-                <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-405 block">Enrollments registration rate</span>
-                  <div className="w-full h-44 mt-3 relative flex items-end">
-                    <svg viewBox="0 0 350 150" className="w-full h-full overflow-visible">
-                      <defs>
-                        <linearGradient id="enrollmentGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M 20 130 L 100 110 Q 180 60, 240 50 T 330 20 L 330 150 L 20 150 Z" fill="url(#enrollmentGrad)" />
-                      <path d="M 20 130 L 100 110 Q 180 60, 240 50 T 330 20" fill="none" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
-                      <circle cx="240" cy="50" r="4" fill="#121212" stroke="#6366f1" strokeWidth="2.5" />
-                      <circle cx="330" cy="20" r="4" fill="#121212" stroke="#6366f1" strokeWidth="2.5" />
+                {(() => {
+                  const enrollmentData = [
+                    { label: 'Week 1', value: 450, change: '+12', x: 20, y: 130, date: 'May 18, 2026 - May 22, 2026', desc: 'Campaign launch and initial roster ingestion.' },
+                    { label: 'Week 2', value: 580, change: '+130', x: 100, y: 110, date: 'May 25, 2026 - May 29, 2026', desc: 'Late enrollees and schedule adjustments completed.' },
+                    { label: 'Week 3', value: 722, change: '+142', x: 180, y: 60, date: 'June 1, 2026 - June 5, 2026', desc: 'Add/drop period finalized; stable roster achieved.' },
+                    { label: 'Week 4', value: 850, change: '+128', x: 260, y: 30, date: 'June 8, 2026 - June 12, 2026', desc: 'Current census recorded and locked.' },
+                    { label: 'Target', value: 900, change: 'Met', x: 330, y: 20, date: 'Registration closing date', desc: 'Optimal room load factors within limits.' },
+                  ];
 
-                      <text x="240" y="32" fontSize="8" fill="#6366f1" fontWeight="bold" textAnchor="middle" className="font-mono">+142</text>
-                      <text x="330" y="10" fontSize="8" fill="#6366f1" fontWeight="bold" textAnchor="middle" className="font-mono">Target Met</text>
+                  return (
+                    <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-850 bg-zinc-50/50 dark:bg-zinc-900/30 relative">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-405 block text-left">Enrollments registration rate</span>
+                      <div className="w-full h-44 mt-3 relative flex items-end">
+                        <svg viewBox="0 0 350 150" className="w-full h-full overflow-visible">
+                          <defs>
+                            <linearGradient id="enrollmentGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.2" />
+                              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+                            </linearGradient>
+                          </defs>
 
-                      {/* Period Marks */}
-                      <text x="20" y="145" fontSize="8" fill="#888">Wk 1</text>
-                      <text x="100" y="145" fontSize="8" fill="#888">Wk 2</text>
-                      <text x="180" y="145" fontSize="8" fill="#888">Wk 3</text>
-                      <text x="260" y="145" fontSize="8" fill="#888">Wk 4</text>
-                    </svg>
-                  </div>
-                  <p className="text-[10px] text-zinc-400 mt-2 text-left">Total term enrollment increased by <b>18.4%</b> since campaign start.</p>
-                </div>
+                          {/* Filled Area */}
+                          <path d="M 20 130 L 100 110 L 180 60 L 260 30 L 330 20 L 330 135 L 20 135 Z" fill="url(#enrollmentGrad)" />
+                          
+                          {/* Connected Line path */}
+                          <path d="M 20 130 L 100 110 L 180 60 L 260 30 L 330 20" fill="none" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
+                          
+                          {/* Interactive points */}
+                          {enrollmentData.map((d, idx) => {
+                            const isHovered = hoveredEnrollmentIndex === idx;
+                            return (
+                              <g key={idx}>
+                                {/* Touch hover node */}
+                                <circle 
+                                  cx={d.x} 
+                                  cy={d.y} 
+                                  r="16" 
+                                  fill="transparent" 
+                                  className="cursor-pointer"
+                                  onMouseEnter={() => setHoveredEnrollmentIndex(idx)}
+                                  onMouseLeave={() => setHoveredEnrollmentIndex(null)}
+                                />
+                                {isHovered && (
+                                  <circle 
+                                    cx={d.x} 
+                                    cy={d.y} 
+                                    r="8" 
+                                    fill="none" 
+                                    stroke="#6366f1" 
+                                    strokeWidth="1.5" 
+                                    className="animate-ping opacity-65"
+                                  />
+                                )}
+                                <circle 
+                                  cx={d.x} 
+                                  cy={d.y} 
+                                  r={isHovered ? 6 : 4} 
+                                  fill="#121212" 
+                                  stroke="#6366f1" 
+                                  strokeWidth={isHovered ? 3 : 2.5}
+                                  className="transition-all duration-150"
+                                />
+                                <text 
+                                  x={d.x} 
+                                  y={d.y - 12} 
+                                  fontSize="8" 
+                                  fill="#6366f1" 
+                                  fontWeight={isHovered ? "black" : "bold"} 
+                                  textAnchor="middle" 
+                                  className="font-mono"
+                                >
+                                  {d.value}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Period Marks */}
+                          <text x="20" y="145" fontSize="8" fill="#888">Wk 1</text>
+                          <text x="100" y="145" fontSize="8" fill="#888">Wk 2</text>
+                          <text x="180" y="145" fontSize="8" fill="#888">Wk 3</text>
+                          <text x="260" y="145" fontSize="8" fill="#888">Wk 4</text>
+                          <text x="320" y="145" fontSize="8" fill="#888">Tgt</text>
+                        </svg>
+
+                        {/* Enrollment Custom Tooltip popup */}
+                        {hoveredEnrollmentIndex !== null && (() => {
+                          const data = enrollmentData[hoveredEnrollmentIndex];
+                          return (
+                            <div 
+                              className="absolute z-20 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
+                              style={{
+                                left: `${(data.x / 350) * 100}%`,
+                                bottom: `${(150 - data.y + 12) / 150 * 100}%`,
+                                transform: 'translateX(-50%)',
+                              }}
+                            >
+                              <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
+                                <span className="text-[9px] font-mono font-bold text-indigo-400 uppercase tracking-widest">{data.label} Roster</span>
+                                <span className="text-[9px] font-mono text-indigo-300 font-bold">{data.change}</span>
+                              </div>
+                              <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
+                              <p className="text-[9.5px] text-zinc-300 leading-tight mt-0.5">{data.desc}</p>
+                              <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
+                                Total Enrolled: <strong className="text-indigo-400 text-[10px]">{data.value}</strong>
+                              </p>
+                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-2 text-left">Total term enrollment increased by <b>18.4%</b> since campaign start.</p>
+                    </div>
+                  );
+                })()}
 
               </div>
 
@@ -763,12 +1096,19 @@ export default function DashboardAdmin({
             </div>
           </div>
 
-        </div>
+        </motion.div>
       )}
 
       {/* 2. USERS DIRECTORY VIEW */}
       {activeScreen === 'users' && (
-        <div className="space-y-6 text-left animate-fade-in">
+        <motion.div
+          key="users"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left animate-fade-in"
+        >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-black tracking-tight">University Users Directories</h2>
@@ -972,13 +1312,22 @@ export default function DashboardAdmin({
                               </div>
                             </div>
 
-                            <button
-                              onClick={() => handleDeleteUser(u.id, u.name)}
-                              className="p-2 border border-red-500/10 hover:bg-red-500/10 rounded-xl text-red-500 cursor-pointer transition-colors shrink-0 self-start"
-                              title="Revoke Staff Credentials"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex gap-1 shrink-0 self-start">
+                              <button
+                                onClick={() => handleStartEditUser(u)}
+                                className="p-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl text-zinc-500 hover:text-zinc-850 cursor-pointer transition-colors"
+                                title="Edit User Details"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                                className="p-2 border border-red-500/10 hover:bg-red-500/10 rounded-xl text-red-500 cursor-pointer transition-colors"
+                                title="Revoke Staff Credentials"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
 
                           {/* Classes taught sub-list */}
@@ -1118,13 +1467,22 @@ export default function DashboardAdmin({
                               </div>
                             </div>
 
-                            <button
-                              onClick={() => handleDeleteUser(u.id, u.name)}
-                              className="p-2 border border-red-500/10 hover:bg-red-500/10 rounded-xl text-red-500 cursor-pointer transition-colors shrink-0 self-start"
-                              title="Revoke Student Enrollment"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex gap-1 shrink-0 self-start">
+                              <button
+                                onClick={() => handleStartEditUser(u)}
+                                className="p-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl text-zinc-500 hover:text-zinc-850 cursor-pointer transition-colors"
+                                title="Edit User Details"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                                className="p-2 border border-red-500/10 hover:bg-red-500/10 rounded-xl text-red-500 cursor-pointer transition-colors"
+                                title="Revoke Student Enrollment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
 
                           {/* Enrolled Courses list */}
@@ -1176,12 +1534,108 @@ export default function DashboardAdmin({
             )}
 
           </div>
+        </motion.div>
+      )}
+
+      {/* Edit User Modal Dialog Overlay */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-left animate-scale-up">
+            <button
+              onClick={() => setEditingUser(null)}
+              className="absolute top-4 right-4 w-7 h-7 rounded-full bg-zinc-105 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-850 text-zinc-500 hover:text-zinc-750 flex items-center justify-center cursor-pointer transition-all active:scale-95"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <div className="flex items-center gap-2.5 pb-2 border-b border-zinc-100 dark:border-zinc-900">
+              <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <Edit className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm text-zinc-900 dark:text-zinc-100 uppercase tracking-wide">Edit Directory Record</h3>
+                <p className="text-[10px] text-zinc-400">Modifying profile data credentials for {editingUser.role}</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditUserSubmit} className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-zinc-455 uppercase tracking-widest font-sans">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editUserName}
+                  onChange={(e) => setEditUserName(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-zinc-455 uppercase tracking-widest font-sans">Official Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={editUserEmail}
+                  onChange={(e) => setEditUserEmail(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-zinc-455 uppercase tracking-widest font-sans">{editingUser.role === 'faculty' ? 'Faculty ID' : 'Student ID'}</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserUid}
+                    onChange={(e) => setEditUserUid(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-zinc-455 uppercase tracking-widest font-sans font-sans">Department</label>
+                  <select
+                    value={editUserDep}
+                    onChange={(e) => setEditUserDep(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-white dark:bg-zinc-900 focus:ring-1 focus:ring-emerald-500 outline-none text-zinc-900 dark:text-zinc-100"
+                  >
+                    {departmentsList.map((dep, d_id) => (
+                      <option key={d_id} value={dep}>{dep}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 border border-zinc-250 dark:border-zinc-800 rounded-xl text-zinc-450 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-xs font-bold uppercase cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
       {/* Schedules / Curriculum Editor screen for Admin */}
       {activeScreen === 'schedule-editor' && (
-        <div className="space-y-6 text-left animate-fade-in">
+        <motion.div
+          key="schedule-editor"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-6 text-left animate-fade-in"
+        >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-black tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">Master Schedules & Offerings</h2>
@@ -1255,12 +1709,19 @@ export default function DashboardAdmin({
               );
             })}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Profile, editable settings */}
       {activeScreen === 'profile' && (
-        <div className="max-w-2xl mx-auto space-y-6 text-left animate-fade-in text-zinc-900 dark:text-zinc-100">
+        <motion.div
+          key="profile"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-2xl mx-auto space-y-6 text-left animate-fade-in text-zinc-900 dark:text-zinc-100"
+        >
           <div className="p-6 rounded-2xl border bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-850 shadow-sm space-y-6">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-200 dark:border-zinc-855">
               <div>
@@ -1412,8 +1873,9 @@ export default function DashboardAdmin({
               </div>
             </form>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* 5. INDIVIDUAL SUBJECT DETAILED AUDITS MODAL OVERLAY */}
       <SubjectDetailModal
