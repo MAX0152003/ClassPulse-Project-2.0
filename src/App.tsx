@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Role, 
   ClassSession, 
@@ -43,7 +44,9 @@ import {
   MessageSquare,
   Users,
   Inbox,
-  UserCircle
+  UserCircle,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 
 // Safe Local Storage Wrapper to prevent app crashes due to QuotaExceededError or browser iframe restrictions
@@ -81,6 +84,27 @@ const safeStorage = {
 };
 
 export default function App() {
+  // Global App-level Toast System
+  const [toast, setToast] = React.useState<{ message: string; type: 'success' | 'warning' | 'info' | 'error' } | null>(null);
+
+  React.useEffect(() => {
+    (window as any).showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => {
+      setToast({ message, type });
+    };
+    return () => {
+      delete (window as any).showToast;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   // 1. Core State Managers (Local Storage integrated)
   const [user, setUser] = React.useState<UserProfile | null>(() => {
     const cached = safeStorage.getItem('cp_user');
@@ -711,6 +735,17 @@ export default function App() {
             userName={user.name}
             userAvatar={user.avatar}
             unreadNotifications={notifications.filter(n => !n.read).length}
+            unreadMessages={(() => {
+              try {
+                const cached = localStorage.getItem('cp_chat_messages_v2');
+                if (!cached) return 2; // Default starting unread seeds count
+                const msgs = JSON.parse(cached);
+                const myId = user.role === 'student' ? (user.studentId || '2023-10492') : (user.facultyId || 'fac-1');
+                return msgs.filter((m: any) => m.senderId !== myId && !m.read).length;
+              } catch (e) {
+                return 0;
+              }
+            })()}
             pendingExcuseCount={excuseLetters.filter(e => e.status === 'pending').length}
             accessibility={accessibility}
           />
@@ -751,21 +786,26 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Quick Preferences routing button */}
+                {/* Notification Bell routing button instead of settings */}
                 <button
                   onClick={() => {
-                    setActiveScreen('settings');
-                    speakText("Navigating to settings panel", accessibility.readAloud);
+                    setActiveScreen('notifications');
+                    speakText("Navigating to notification center", accessibility.readAloud);
                   }}
                   type="button"
-                  className={`p-2.5 rounded-xl border flex items-center justify-center cursor-pointer transition-all border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
-                    activeScreen === 'settings'
+                  className={`p-2.5 rounded-xl border flex items-center justify-center cursor-pointer transition-all relative border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900 ${
+                    activeScreen === 'notifications'
                       ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 font-extrabold shadow-sm'
                       : 'text-zinc-600 dark:text-zinc-400'
                   }`}
-                  title="System Preferences & Preferences Panels"
+                  title="Notification Center & System Logs"
                 >
-                  <Settings className="w-4.5 h-4.5" />
+                  <Bell className="w-4.5 h-4.5" />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-550 bg-red-600 text-white rounded-full flex items-center justify-center text-[8px] font-black leading-none font-mono">
+                      {notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -925,6 +965,40 @@ export default function App() {
 
         </div>
       )}
+
+      {/* Dynamic Toast Alerts Overlay */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.15 } }}
+            className="fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 rounded-2xl shadow-xl border bg-white dark:bg-zinc-950 backdrop-blur-md flex items-start gap-3 text-left border-zinc-250 dark:border-zinc-805"
+          >
+            <div className="shrink-0 mt-0.5">
+              {toast.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-500" />}
+              {toast.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500" />}
+              {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-red-500" />}
+              {toast.type === 'info' && <Info className="w-5 h-5 text-indigo-500" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h5 className="text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                {toast.type === 'success' ? 'System Success' : toast.type === 'warning' ? 'Security Warning' : toast.type === 'error' ? 'Operation Failure' : 'Core Report'}
+              </h5>
+              <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 leading-snug">
+                {toast.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-250 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors cursor-pointer shrink-0"
+              title="Close Toast"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

@@ -36,7 +36,8 @@ import {
   BellRing,
   Search,
   Inbox,
-  Download
+  Download,
+  SlidersHorizontal
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock from './AlarmClock';
@@ -99,6 +100,10 @@ export default function DashboardFaculty({
   // Notifications filters & search
   const [notifSearch, setNotifSearch] = React.useState('');
   const [notifFilter, setNotifFilter] = React.useState<'all' | 'alerts' | 'updates'>('all');
+
+  // Fast Class Search & Student Search states
+  const [classSearchQuery, setClassSearchQuery] = React.useState('');
+  const [studentSearchQuery, setStudentSearchQuery] = React.useState('');
 
   React.useEffect(() => {
     localStorage.setItem('classpulse_faculty_bulletins_hidden', String(isBulletinsHidden));
@@ -709,33 +714,33 @@ export default function DashboardFaculty({
                       const data = facultyAttendanceTrends[hoveredFacultyTrendIndex];
                       return (
                         <div 
-                          className="absolute z-50 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-56 text-left"
+                          className="absolute z-50 p-3 rounded-xl bg-white dark:bg-zinc-950/95 text-zinc-800 dark:text-white border border-zinc-200 dark:border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-56 text-left"
                           style={{
                             left: `${(data.x / 400) * 100}%`,
                             bottom: `${(150 - data.y + 12) / 150 * 100}%`,
                             transform: 'translateX(-50%)',
                           }}
                         >
-                          <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
-                            <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{data.label} (Week 4)</span>
-                            <span className="text-[8px] font-mono text-zinc-500">FACULTY CORE</span>
+                          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1 mb-1">
+                            <span className="text-[9px] font-mono font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest">{data.label} (Week 4)</span>
+                            <span className="text-[8px] font-mono text-zinc-400 dark:text-zinc-550">FACULTY CORE</span>
                           </div>
-                          <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
-                          <p className="text-[9.5px] italic text-zinc-300">"{data.syllabus}"</p>
-                          <div className="grid grid-cols-2 gap-2.5 mt-1 border-t border-zinc-900 pt-1.5 font-mono text-[9px]">
+                          <p className="text-[10px] font-bold text-zinc-900 dark:text-zinc-100">{data.date}</p>
+                          <p className="text-[9.5px] italic text-zinc-600 dark:text-zinc-300">"{data.syllabus}"</p>
+                          <div className="grid grid-cols-2 gap-2.5 mt-1 border-t border-zinc-100 dark:border-zinc-900 pt-1.5 font-mono text-[9px]">
                             <div>
-                              <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Scans Today</p>
-                              <p className="font-extrabold text-zinc-200">{data.scans} students</p>
+                              <p className="text-[7px] text-zinc-400 dark:text-zinc-550 uppercase tracking-wider">Scans Today</p>
+                              <p className="font-extrabold text-zinc-800 dark:text-zinc-200">{data.scans} students</p>
                             </div>
                             <div>
-                              <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Avg Check-in</p>
-                              <p className="font-extrabold text-amber-400">{data.averageTime}</p>
+                              <p className="text-[7px] text-zinc-400 dark:text-zinc-550 uppercase tracking-wider">Avg Check-in</p>
+                              <p className="font-extrabold text-amber-600 dark:text-amber-400">{data.averageTime}</p>
                             </div>
                           </div>
-                          <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
-                            Attendance Rate: <strong className="text-emerald-400 text-[10px]">{data.value}%</strong>
+                          <p className="text-[8px] text-zinc-500 dark:text-zinc-450 mt-1 leading-normal border-t border-zinc-100 dark:border-zinc-900/50 pt-1">
+                            Attendance Rate: <strong className="text-emerald-500 dark:text-emerald-400 text-[10px]">{data.value}%</strong>
                           </p>
-                          <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-805 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                          <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-white dark:bg-zinc-950 border-r border-b border-zinc-200 dark:border-zinc-805 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
                         </div>
                       );
                     })()}
@@ -814,44 +819,81 @@ export default function DashboardFaculty({
             {/* Class Cards list */}
             <div className="lg:col-span-8 space-y-4">
               <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
-                <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-900">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-900">
                   <div>
                     <h3 className="font-extrabold text-base text-zinc-900 dark:text-zinc-100">Assigned Curriculums</h3>
                     <p className="text-xs text-zinc-400">Click any card to inspect active student registries and attendance trends</p>
                   </div>
+                  <div className="relative w-full md:max-w-xs shrink-0 select-none">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400 pointer-events-none">
+                      <Search className="w-3.5 h-3.5 text-emerald-500" />
+                    </span>
+                    <input
+                      type="text"
+                      className="w-full pl-8 pr-8 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-zinc-205 dark:border-zinc-800 focus:border-emerald-500 outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                      placeholder="Fast search classes..."
+                      value={classSearchQuery}
+                      onChange={(e) => setClassSearchQuery(e.target.value)}
+                    />
+                    {classSearchQuery && (
+                      <button 
+                        onClick={() => setClassSearchQuery('')}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-650"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                  {classes.map(cls => {
-                    const enrolledCount = enrollments.filter(e => e.classId === cls.id).length;
+                {(() => {
+                  const filtered = classes.filter(cls => 
+                    cls.name.toLowerCase().includes(classSearchQuery.toLowerCase()) ||
+                    cls.code.toLowerCase().includes(classSearchQuery.toLowerCase())
+                  );
+
+                  if (filtered.length === 0) {
                     return (
-                      <div
-                        key={cls.id}
-                        onClick={() => handleOpenSubjectDetails(cls)}
-                        className="p-5 pl-7 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs hover:shadow-md transition-all cursor-pointer text-left relative overflow-hidden group hover:border-emerald-500/30"
-                      >
-                        {/* High elegance left-border ribbon accentuating the status */}
-                        <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 transition-transform duration-300 group-hover:scale-y-110" />
-                        
-                        <span className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold uppercase">
-                          {cls.code}
-                        </span>
-                        
-                        <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight mt-3 truncate">{cls.name}</h4>
-                        
-                        <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-850">
-                          <span className="flex items-center gap-1 font-semibold text-zinc-650 dark:text-zinc-350">
-                            <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                            {cls.startTime}
-                          </span>
-                          <span className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg text-emerald-700 dark:text-emerald-400 font-extrabold border border-emerald-500/10">
-                            <Users className="w-3.5 h-3.5 text-emerald-500" /> {enrolledCount} Students
-                          </span>
-                        </div>
+                      <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs font-medium">
+                        No courses match "{classSearchQuery}"
                       </div>
                     );
-                  })}
-                </div>
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                      {filtered.map(cls => {
+                        const enrolledCount = enrollments.filter(e => e.classId === cls.id).length;
+                        return (
+                          <div
+                            key={cls.id}
+                            onClick={() => handleOpenSubjectDetails(cls)}
+                            className="p-5 pl-7 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs hover:shadow-md transition-all cursor-pointer text-left relative overflow-hidden group hover:border-emerald-500/30"
+                          >
+                            {/* High elegance left-border ribbon accentuating the status */}
+                            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 transition-transform duration-300 group-hover:scale-y-110" />
+                            
+                            <span className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold uppercase">
+                              {cls.code}
+                            </span>
+                            
+                            <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight mt-3 truncate">{cls.name}</h4>
+                            
+                            <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-850">
+                              <span className="flex items-center gap-1 font-semibold text-zinc-650 dark:text-zinc-350">
+                                <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                {cls.startTime}
+                              </span>
+                              <span className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg text-emerald-700 dark:text-emerald-400 font-extrabold border border-emerald-500/10">
+                                <Users className="w-3.5 h-3.5 text-emerald-500" /> {enrolledCount} Students
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Merged Pre-Class Clock & Status Broadcast card */}
@@ -1162,8 +1204,23 @@ export default function DashboardFaculty({
           )}
 
           {/* List of active schedules */}
-          <div className="space-y-4">
-            {classes.map(cls => {
+          {(() => {
+            const todayIndex = new Date().getDay();
+            const dayMap: Record<number, string> = {
+              1: 'Mon',
+              2: 'Tue',
+              3: 'Wed',
+              4: 'Thu',
+              5: 'Fri',
+              6: 'Sat',
+              0: 'Sun'
+            };
+            const todayLabel = dayMap[todayIndex] || 'Mon';
+
+            const todayClasses = classes.filter(cls => cls.days.includes(todayLabel));
+            const otherClasses = classes.filter(cls => !cls.days.includes(todayLabel));
+
+            const renderClassItem = (cls: typeof classes[0]) => {
               const studentRegisteredCount = enrollments.filter(e => e.classId === cls.id).length;
               return (
                 <div 
@@ -1218,8 +1275,43 @@ export default function DashboardFaculty({
                   </div>
                 </div>
               );
-            })}
-          </div>
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Today's Schedule */}
+                {todayClasses.length > 0 && (
+                  <div className="space-y-3 flex flex-col text-left">
+                    <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Current Classes ({todayLabel})
+                    </h4>
+                    <div className="space-y-4">
+                      {todayClasses.map(cls => renderClassItem(cls))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Future/Other Schedules */}
+                <div className="space-y-3 text-left">
+                  {otherClasses.length > 0 && (
+                    <h4 className="text-xs font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-widest pt-2">
+                      Future Schedule
+                    </h4>
+                  )}
+                  {otherClasses.length > 0 ? (
+                    <div className="space-y-4">
+                      {otherClasses.map(cls => renderClassItem(cls))}
+                    </div>
+                  ) : (
+                    todayClasses.length === 0 && (
+                      <p className="text-xs text-zinc-500 italic text-center">No classes scheduled.</p>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </motion.div>
       )}
 
@@ -1432,7 +1524,11 @@ export default function DashboardFaculty({
                       const lastGenDate = new Date(activeMatch.qrGeneratedAt).toDateString();
                       const todayDate = new Date().toDateString();
                       if (lastGenDate === todayDate) {
-                        alert(`🚫 QR session has already been generated once for ${activeMatch?.code} today! In compliance with class policy rules, you can only generate a QR session code one time.`);
+                        if (typeof window !== 'undefined' && (window as any).showToast) {
+                          (window as any).showToast(`QR session already generated once for ${activeMatch?.code} today! Policy restricts to single generation daily.`, "error");
+                        } else {
+                          alert(`🚫 QR session has already been generated once for ${activeMatch?.code} today! In compliance with class policy rules, you can only generate a QR session code one time.`);
+                        }
                         speakText(`Registration is already occupied for today`, accessibility.readAloud);
                         return;
                       }
@@ -1489,7 +1585,7 @@ export default function DashboardFaculty({
                 <BellRing className="w-5 h-5 text-emerald-500" />
                 Notification logs
               </h2>
-              <p className="text-xs text-zinc-405 text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
             </div>
             {notifications.length > 0 && (
               <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -1512,9 +1608,9 @@ export default function DashboardFaculty({
           </div>
 
           {/* Search and Classification Filters Block */}
-          <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
+          <div className="flex gap-2 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
             {/* Search Input */}
-            <div className="relative">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-405 dark:text-zinc-500" />
               <input
                 type="text"
@@ -1534,61 +1630,22 @@ export default function DashboardFaculty({
               )}
             </div>
 
-            {/* Structured Classification Tabs */}
-            <div className="grid grid-cols-3 gap-1.5 pt-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('all');
-                  speakText("Showing all notifications", accessibility.readAloud);
+            {/* Compact Dropdown Filter with Icon */}
+            <div className="relative shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-2.5 py-2">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+              <select
+                value={notifFilter}
+                onChange={(e) => {
+                  const val = e.target.value as 'all' | 'alerts' | 'updates';
+                  setNotifFilter(val);
+                  speakText(`Filter set to ${val}`, accessibility.readAloud);
                 }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'all'
-                    ? 'bg-neutral-900 dark:bg-zinc-800 text-white shadow-sm font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
+                className="bg-transparent text-xs font-black uppercase text-zinc-700 dark:text-zinc-300 outline-none border-none pr-6 cursor-pointer"
               >
-                <span>All</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-zinc-200 dark:bg-zinc-700 text-zinc-650 dark:text-zinc-200 font-bold">
-                  {notifications.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('alerts');
-                  speakText("Showing alerts and warnings only", accessibility.readAloud);
-                }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'alerts'
-                    ? 'bg-amber-500 text-neutral-950 font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
-              >
-                <span>⚠️ Alerts</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-amber-500/10 text-amber-900 dark:text-amber-200 font-bold">
-                  {notifications.filter(n => n.type === 'alert' || n.type === 'warning').length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('updates');
-                  speakText("Showing standard bulletins and status updates only", accessibility.readAloud);
-                }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'updates'
-                    ? 'bg-emerald-600 text-white font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
-              >
-                <span>✅ Updates</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
-                  {notifications.filter(n => n.type === 'info' || n.type === 'success').length}
-                </span>
-              </button>
+                <option value="all" className="dark:bg-zinc-950">ALL ({notifications.length})</option>
+                <option value="alerts" className="dark:bg-zinc-950">ALERTS ({notifications.filter(n => n.type === 'alert' || n.type === 'warning').length})</option>
+                <option value="updates" className="dark:bg-zinc-950">UPDATES ({notifications.filter(n => n.type === 'info' || n.type === 'success').length})</option>
+              </select>
             </div>
           </div>
 
@@ -1785,6 +1842,7 @@ export default function DashboardFaculty({
         enrollments={enrollments}
         records={attendanceRecords}
         facultyStatuses={facultyStatuses}
+        isDark={accessibility.theme === 'dark'}
       />
 
       {/* Messages tab screen */}
@@ -2008,155 +2066,200 @@ export default function DashboardFaculty({
               {/* List of enrolled students in matched class */}
               <div className="lg:col-span-8 space-y-4">
                 <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm">
-                  <h3 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mb-4 tracking-tight flex items-center justify-between">
-                    <span>Class Enrolled Roster ({monEnrollments.length})</span>
-                    <span className="text-[10px] font-black uppercase text-zinc-400">Attendance control panel</span>
-                  </h3>
-
-                  {monEnrollments.length === 0 ? (
-                    <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs font-medium">
-                      No student registration records found in academic ledger table for this class.
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 mb-4 border-b border-zinc-150 dark:border-zinc-900">
+                    <div>
+                      <h3 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">
+                        Class Enrolled Roster ({monEnrollments.length})
+                      </h3>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">Interactive roster & attendance control panel</p>
                     </div>
-                  ) : (
-                    <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-                      {monEnrollments.map(student => {
-                        const studentRecords = attendanceRecords.filter(
-                          r => r.classId === activeMonClass.id && 
-                          (r.studentId === student.studentId || r.studentName === student.studentName)
-                        );
-                        
-                        const pres = studentRecords.filter(r => r.status === 'present').length;
-                        const late = studentRecords.filter(r => r.status === 'late').length;
-                        const abs = studentRecords.filter(r => r.status === 'absent').length;
+                    
+                    {/* Student directory inner search */}
+                    <div className="relative w-full md:max-w-xs shrink-0 select-none">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400 pointer-events-none">
+                        <Search className="w-3.5 h-3.5 text-emerald-500" />
+                      </span>
+                      <input
+                        type="text"
+                        className="w-full pl-8 pr-8 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-900/65 rounded-xl border border-zinc-202 dark:border-zinc-800 focus:border-emerald-500 outline-none text-zinc-805 dark:text-zinc-200 font-bold"
+                        placeholder="Search student name or ID..."
+                        value={studentSearchQuery}
+                        onChange={(e) => setStudentSearchQuery(e.target.value)}
+                      />
+                      {studentSearchQuery && (
+                        <button 
+                          onClick={() => setStudentSearchQuery('')}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-650 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                        const total = studentRecords.length;
-                        const rate = total > 0 ? Math.round(((pres + late) / total) * 100) : 100;
-                        const rateClamped = rate > 100 ? 100 : rate;
-                        const isUnderMonitoring = rateClamped < 85;
+                  {(() => {
+                    const filteredStudents = monEnrollments.filter(student => 
+                      student.studentName.toLowerCase().includes(studentSearchQuery.toLowerCase()) ||
+                      (student.studentId && student.studentId.toLowerCase().includes(studentSearchQuery.toLowerCase()))
+                    );
 
-                        return (
-                          <div key={student.id} className="py-4 flex flex-col text-left">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                              <div className="flex items-center gap-3">
-                                <img 
-                                  src={student.studentAvatar} 
-                                  alt={student.studentName} 
-                                  className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
-                                />
-                                <div>
-                                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
-                                    <span>{student.studentName}</span>
-                                    {(() => {
-                                      // Calculate precise warning check
-                                      const countAbsentsForClass = abs;
+                    if (monEnrollments.length === 0) {
+                      return (
+                        <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs font-medium">
+                          No student registration records found in academic ledger table for this class.
+                        </div>
+                      );
+                    }
 
-                                      let maxConsecutive = 0;
-                                      let currConsecutive = 0;
-                                      const sortedRecs = [...studentRecords].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                                      for (const r of sortedRecs) {
-                                        if (r.status === 'absent') {
-                                          currConsecutive++;
-                                          if (currConsecutive > maxConsecutive) maxConsecutive = currConsecutive;
-                                        } else {
-                                          currConsecutive = 0;
+                    if (filteredStudents.length === 0) {
+                      return (
+                        <div className="py-12 text-center text-zinc-400 dark:text-zinc-500 text-xs font-medium animate-fade-in">
+                          No students match "{studentSearchQuery}"
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+                        {filteredStudents.map(student => {
+                          const studentRecords = attendanceRecords.filter(
+                            r => r.classId === activeMonClass.id && 
+                            (r.studentId === student.studentId || r.studentName === student.studentName)
+                          );
+                          
+                          const pres = studentRecords.filter(r => r.status === 'present').length;
+                          const late = studentRecords.filter(r => r.status === 'late').length;
+                          const abs = studentRecords.filter(r => r.status === 'absent').length;
+
+                          const total = studentRecords.length;
+                          const rate = total > 0 ? Math.round(((pres + late) / total) * 100) : 100;
+                          const rateClamped = rate > 100 ? 100 : rate;
+                          const isUnderMonitoring = rateClamped < 85;
+
+                          return (
+                            <div key={student.id} className="py-4 flex flex-col text-left">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <img 
+                                    src={student.studentAvatar} 
+                                    alt={student.studentName} 
+                                    className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0"
+                                  />
+                                  <div>
+                                    <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
+                                      <span>{student.studentName}</span>
+                                      {(() => {
+                                        // Calculate precise warning check
+                                        const countAbsentsForClass = abs;
+
+                                        let maxConsecutive = 0;
+                                        let currConsecutive = 0;
+                                        const sortedRecs = [...studentRecords].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                        for (const r of sortedRecs) {
+                                          if (r.status === 'absent') {
+                                            currConsecutive++;
+                                            if (currConsecutive > maxConsecutive) maxConsecutive = currConsecutive;
+                                          } else {
+                                            currConsecutive = 0;
+                                          }
                                         }
-                                      }
 
-                                      if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                                        if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                                          return (
+                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-red-500 bg-red-500/10 border border-red-500/15">
+                                              🚫 Dropped
+                                            </span>
+                                          );
+                                        } else if (countAbsentsForClass >= 3) {
+                                          return (
+                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-amber-555 bg-amber-500/10 border border-amber-500/15">
+                                              ⚠️ Warning
+                                            </span>
+                                          );
+                                        }
                                         return (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-red-500 bg-red-500/10 border border-red-500/15">
-                                            🚫 Dropped
+                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-emerald-500 bg-emerald-500/10 border border-emerald-505">
+                                            Good Stand
                                           </span>
                                         );
-                                      } else if (countAbsentsForClass >= 3) {
-                                        return (
-                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-amber-555 bg-amber-500/10 border border-amber-500/15">
-                                            ⚠️ Warning
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide text-emerald-500 bg-emerald-500/10 border border-emerald-505">
-                                          Good Stand
-                                        </span>
-                                      );
-                                    })()}
-                                  </h4>
-                                  <p className="text-[10px] text-zinc-455 mt-0.5 font-mono">{student.studentId} • Enrolled {student.enrolledAt}</p>
-                                </div>
-                              </div>
-
-                              {/* Attendance figures logs & edit trigger */}
-                              <div className="flex items-center gap-6 self-end sm:self-auto shrink-0">
-                                <div className="flex gap-4 text-center font-mono">
-                                  <div>
-                                    <p className="text-[8px] font-bold text-zinc-400">PRESENT(S)</p>
-                                    <p className="text-xs font-black text-emerald-500">{pres + late}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[8px] font-bold text-zinc-400">ABSENT(S)</p>
-                                    <p className="text-xs font-black text-ref-500 text-red-500">{abs}</p>
-                                  </div>
-                                  <div className="p-0 border-r border-zinc-200 dark:border-zinc-800 h-6 self-center" />
-                                  <div>
-                                    <p className="text-[8px] font-bold text-zinc-400">PERCENT RATE</p>
-                                    <p className={`text-xs font-black ${isUnderMonitoring ? 'text-red-500 font-extrabold' : 'text-zinc-800 dark:text-zinc-250'}`}>{rateClamped}%</p>
+                                      })()}
+                                    </h4>
+                                    <p className="text-[10px] text-zinc-455 mt-0.5 font-mono">{student.studentId} • Enrolled {student.enrolledAt}</p>
                                   </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
-                                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[10px] font-black uppercase text-zinc-650 dark:text-zinc-300 transition-all cursor-pointer"
-                                >
-                                  {expandedStudentId === student.id ? 'Close' : 'Edit Logs'}
-                                </button>
+                                {/* Attendance figures logs & edit trigger */}
+                                <div className="flex items-center gap-6 self-end sm:self-auto shrink-0">
+                                  <div className="flex gap-4 text-center font-mono">
+                                    <div>
+                                      <p className="text-[8px] font-bold text-zinc-400">PRESENT(S)</p>
+                                      <p className="text-xs font-black text-emerald-500">{pres + late}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] font-bold text-zinc-400">ABSENT(S)</p>
+                                      <p className="text-xs font-black text-ref-500 text-red-505">{abs}</p>
+                                    </div>
+                                    <div className="p-0 border-r border-zinc-200 dark:border-zinc-800 h-6 self-center" />
+                                    <div>
+                                      <p className="text-[8px] font-bold text-zinc-400">PERCENT RATE</p>
+                                      <p className={`text-xs font-black ${isUnderMonitoring ? 'text-red-500 font-extrabold' : 'text-zinc-800 dark:text-zinc-250'}`}>{rateClamped}%</p>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
+                                    className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[10px] font-black uppercase text-zinc-650 dark:text-zinc-300 transition-all cursor-pointer"
+                                  >
+                                    {expandedStudentId === student.id ? 'Close' : 'Edit Logs'}
+                                  </button>
+                                </div>
                               </div>
+
+                              {/* Collapsible logs correction panel */}
+                              {expandedStudentId === student.id && (
+                                <div className="mt-4 pl-14 pt-4 border-t border-zinc-100/60 dark:border-zinc-900/60 grid grid-cols-1 gap-2.5 animate-scale-up">
+                                  <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest font-mono">Attendance Correction Ledger</p>
+                                  {studentRecords.length === 0 ? (
+                                    <p className="text-[10px] text-zinc-400 italic">No attendance timestamps recorded yet.</p>
+                                  ) : (
+                                    <div className="grid grid-cols-1 gap-1.5">
+                                      {studentRecords.map(rec => (
+                                        <div key={rec.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-150 dark:border-zinc-850 w-full hover:border-emerald-500/10 transition-all">
+                                          <div className="text-left font-mono">
+                                            <span className="text-[10px] font-extrabold text-zinc-800 dark:text-zinc-205">{rec.date}</span>
+                                            <span className="text-[9px] text-zinc-400 ml-2">({rec.time})</span>
+                                          </div>
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            {(['present', 'late', 'absent'] as const).map(statusOpt => (
+                                              <button
+                                                key={statusOpt}
+                                                type="button"
+                                                onClick={() => onUpdateAttendanceRecord && onUpdateAttendanceRecord(rec.id, statusOpt)}
+                                                className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase cursor-pointer transition-all ${
+                                                  rec.status === statusOpt
+                                                    ? statusOpt === 'present' ? 'bg-emerald-500 text-black font-extrabold scale-95' :
+                                                      statusOpt === 'late' ? 'bg-amber-500 text-black font-extrabold scale-95' : 'bg-red-500 text-white font-extrabold scale-95'
+                                                    : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-90 w-fit dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+                                                }`}
+                                              >
+                                                {statusOpt}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                             </div>
-
-                            {/* Collapsible logs correction panel */}
-                            {expandedStudentId === student.id && (
-                              <div className="mt-4 pl-14 pt-4 border-t border-zinc-100/60 dark:border-zinc-900/60 grid grid-cols-1 gap-2.5 animate-scale-up">
-                                <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest font-mono">Attendance Correction Ledger</p>
-                                {studentRecords.length === 0 ? (
-                                  <p className="text-[10px] text-zinc-400 italic">No attendance timestamps recorded yet.</p>
-                                ) : (
-                                  <div className="grid grid-cols-1 gap-1.5">
-                                    {studentRecords.map(rec => (
-                                      <div key={rec.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-150 dark:border-zinc-850 w-full hover:border-emerald-500/10 transition-all">
-                                        <div className="text-left font-mono">
-                                          <span className="text-[10px] font-extrabold text-zinc-800 dark:text-zinc-200">{rec.date}</span>
-                                          <span className="text-[9px] text-zinc-400 ml-2">({rec.time})</span>
-                                        </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                          {(['present', 'late', 'absent'] as const).map(statusOpt => (
-                                            <button
-                                              key={statusOpt}
-                                              type="button"
-                                              onClick={() => onUpdateAttendanceRecord && onUpdateAttendanceRecord(rec.id, statusOpt)}
-                                              className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase cursor-pointer transition-all ${
-                                                rec.status === statusOpt
-                                                  ? statusOpt === 'present' ? 'bg-emerald-500 text-black font-extrabold scale-95' :
-                                                    statusOpt === 'late' ? 'bg-amber-500 text-black font-extrabold scale-95' : 'bg-red-500 text-white font-extrabold scale-95'
-                                                  : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-90 w-fit dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                                              }`}
-                                            >
-                                              {statusOpt}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

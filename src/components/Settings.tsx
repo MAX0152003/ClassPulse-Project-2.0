@@ -208,7 +208,11 @@ export default function Settings({
 
     setShowResetConfirm(false);
     speakText("System settings have been successfully reset to default configurations.", false);
-    alert("All settings configurations restored to default values successfully.");
+    if (typeof window !== 'undefined' && (window as any).showToast) {
+      (window as any).showToast("All settings configurations restored to default values successfully.", "success");
+    } else {
+      alert("All settings configurations restored to default values successfully.");
+    }
   };
 
   // Generate preset color accents for styling
@@ -601,29 +605,7 @@ export default function Settings({
                 </div>
               </div>
 
-              {/* Accent Color Palettes */}
-              <div className="space-y-2.5">
-                <label className="block text-[10px] font-black uppercase text-zinc-500 tracking-wider">
-                  Interface Primary Highlight Stamp
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {accentsArr.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleColorAccentChange(item.id)}
-                      type="button"
-                      className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all capitalize select-none ${
-                        colorAccent === item.id 
-                          ? 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100 font-extrabold shadow-xs bg-zinc-50 dark:bg-zinc-900' 
-                          : 'border-zinc-200 dark:border-zinc-800 text-zinc-550 dark:text-zinc-400 bg-transparent hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                      }`}
-                    >
-                      <div className={`w-3.5 h-3.5 rounded-full ${item.bg} shrink-0`} />
-                      <span className="text-[11px] font-bold">{item.id}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               {/* Text-to-Speech Toggle */}
               <div className="p-4 rounded-xl border border-zinc-150 dark:border-zinc-850 flex items-center justify-between gap-4 bg-zinc-50/40 dark:bg-zinc-900/40">

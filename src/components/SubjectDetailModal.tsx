@@ -10,6 +10,7 @@ interface SubjectDetailModalProps {
   enrollments: Enrollment[];
   records: AttendanceRecord[];
   facultyStatuses: FacultyStatus[];
+  isDark?: boolean;
 }
 
 export default function SubjectDetailModal({
@@ -18,7 +19,8 @@ export default function SubjectDetailModal({
   cls,
   enrollments,
   records,
-  facultyStatuses
+  facultyStatuses,
+  isDark
 }: SubjectDetailModalProps) {
   if (!isOpen || !cls) return null;
 
@@ -163,6 +165,7 @@ export default function SubjectDetailModal({
               classCode={cls.code} 
               className={cls.name} 
               records={records} 
+              isDark={isDark}
             />
           </div>
 
@@ -225,7 +228,7 @@ export default function SubjectDetailModal({
 
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-zinc-900 dark:bg-zinc-800 text-white text-xs font-bold uppercase cursor-pointer hover:bg-zinc-850 dark:hover:bg-zinc-700 transition-colors"
+            className="px-5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 text-xs font-bold uppercase cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           >
             Close Subject Details
           </button>

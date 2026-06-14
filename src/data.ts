@@ -10,7 +10,8 @@ export const INITIAL_CLASSES: ClassSession[] = [
     room: 'Room 201',
     days: ['Mon', 'Wed'],
     facultyName: 'Dr. Ahmad Khan',
-    facultyId: 'fac-1'
+    facultyId: 'fac-1',
+    credits: 3
   },
   {
     id: 'class-2',
@@ -21,18 +22,20 @@ export const INITIAL_CLASSES: ClassSession[] = [
     room: 'Room 203',
     days: ['Tue', 'Thu'],
     facultyName: 'Prof. Maria Santos',
-    facultyId: 'fac-2'
+    facultyId: 'fac-2',
+    credits: 3
   },
   {
     id: 'class-3',
     code: 'ITE185',
     name: 'Software Engineering',
-    startTime: '03:00 PM',
+    startTime: '03:05 PM',
     endTime: '04:30 PM',
     room: 'Room 204',
     days: ['Mon', 'Wed'],
     facultyName: 'Prof. Ali Hassan',
-    facultyId: 'fac-3'
+    facultyId: 'fac-3',
+    credits: 4
   },
   {
     id: 'class-4',
@@ -43,7 +46,8 @@ export const INITIAL_CLASSES: ClassSession[] = [
     room: 'Room 205',
     days: ['Thu', 'Fri'],
     facultyName: 'Dr. Abdul Rahim',
-    facultyId: 'fac-4'
+    facultyId: 'fac-4',
+    credits: 3
   }
 ];
 

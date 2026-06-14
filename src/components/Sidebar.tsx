@@ -26,6 +26,7 @@ interface SidebarProps {
   userName: string;
   userAvatar: string;
   unreadNotifications: number;
+  unreadMessages?: number;
   pendingExcuseCount?: number;
   accessibility: AccessibilityConfig;
 }
@@ -38,6 +39,7 @@ export default function Sidebar({
   userName,
   userAvatar,
   unreadNotifications,
+  unreadMessages = 0,
   pendingExcuseCount = 0,
   accessibility
 }: SidebarProps) {
@@ -61,7 +63,7 @@ export default function Sidebar({
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'schedule', label: 'My Schedule', icon: CalendarDays },
           { id: 'attendance', label: 'Attendance Scan', icon: Scan },
-          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadMessages },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
           { id: 'settings', label: 'Settings', icon: Settings },
@@ -73,7 +75,7 @@ export default function Sidebar({
           { id: 'qr-generator', label: 'Attendance QR', icon: Scan },
           { id: 'students-monitoring', label: 'Students Directory', icon: Users },
           { id: 'excuse-inbox', label: 'Excuse Inbox', icon: Inbox, badge: pendingExcuseCount },
-          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadMessages },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
           { id: 'settings', label: 'Settings', icon: Settings },
@@ -83,6 +85,7 @@ export default function Sidebar({
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'users', label: 'Users Directory', icon: Users },
           { id: 'schedule-editor', label: 'Schedules', icon: CalendarDays },
+          { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadMessages },
           { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotifications },
           { id: 'profile', label: 'Profile', icon: UserCircle },
           { id: 'settings', label: 'Settings', icon: Settings },
@@ -198,10 +201,14 @@ export default function Sidebar({
             </button>
           </div>
 
-          {/* User Bio Card */}
-          <div className={`mx-4 my-6 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900 flex items-center gap-3 transition-all ${
-            isCollapsed ? 'justify-center mx-2 px-2' : ''
-          }`}>
+          {/* User Bio Card (Clickable to jump directly to editor/profile) */}
+          <div 
+            onClick={() => handleNavClick('profile', 'Profile')}
+            title="Edit Profile"
+            className={`mx-4 my-6 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900 flex items-center gap-3 transition-all cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-900/80 active:scale-98 ${
+              isCollapsed ? 'justify-center mx-2 px-2' : ''
+            }`}
+          >
             <img
               src={userAvatar}
               alt={userName}

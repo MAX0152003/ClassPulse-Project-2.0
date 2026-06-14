@@ -64,7 +64,8 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
         receiverId: '2023-10492',
         receiverName: 'John Doe',
         message: 'Hello class, welcome to MSU Academic Portal! Here are the slides for session #1.',
-        timestamp: '10:00 AM'
+        timestamp: '10:00 AM',
+        read: false
       },
       {
         id: 'msg-seed-2',
@@ -74,7 +75,8 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
         receiverId: 'CS-101', // Group room
         receiverName: 'Introduction to Computer Science',
         message: 'Has anyone finished compiling the web component blueprint?',
-        timestamp: '10:05 AM'
+        timestamp: '10:05 AM',
+        read: true
       },
       {
         id: 'msg-seed-3',
@@ -85,7 +87,19 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
         receiverName: 'Introduction to Computer Science',
         message: 'Welcome everyone to the channel! Here is our syllabus for this term. Please review.',
         timestamp: '10:06 AM',
-        attachmentFile: { name: 'CS101_Syllabus_Revised.pdf', size: '1.4 MB' }
+        attachmentFile: { name: 'CS101_Syllabus_Revised.pdf', size: '1.4 MB' },
+        read: true
+      },
+      {
+        id: 'msg-seed-4',
+        senderId: 'fac-2',
+        senderName: 'Prof. Maria Santos',
+        senderRole: 'faculty',
+        receiverId: '2023-10492',
+        receiverName: 'John Doe',
+        message: 'Please review the exam guidelines before Friday morning.',
+        timestamp: '10:14 AM',
+        read: false
       }
     ];
   });
@@ -218,6 +232,37 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
     }
   }, [contacts, channels]);
 
+  const myId = userProfile.role === 'student' ? (userProfile.studentId || '2023-10492') : (userProfile.facultyId || 'fac-1');
+
+  // Helper to count unread messages for a specific room or contact
+  const getUnreadCount = (id: string) => {
+    return messages.filter(m => {
+      if (m.senderId === myId) return false;
+      const isForThisRoom = m.receiverId === id;
+      const isDirectForMe = m.senderId === id && m.receiverId === myId;
+      return (isForThisRoom || isDirectForMe) && !m.read;
+    }).length;
+  };
+
+  // Mark all messages as read for active contact / channel
+  useEffect(() => {
+    if (!activeContactId) return;
+    
+    setMessages(prev => {
+      let changed = false;
+      const updated = prev.map(m => {
+        const isFromActiveOther = m.senderId === activeContactId && m.receiverId === myId;
+        const isForActiveChannel = m.receiverId === activeContactId && m.senderId !== myId;
+        if ((isFromActiveOther || isForActiveChannel) && !m.read) {
+          changed = true;
+          return { ...m, read: true };
+        }
+        return m;
+      });
+      return changed ? updated : prev;
+    });
+  }, [activeContactId, myId]);
+
   // ACTIVE RECURRENT LIVE CHAT SIMULATION - Completely disabled to prevent automated interruptions
   useEffect(() => {
     // Disabled as requested: "don't automate response make it like message app wait if the receiver/user response."
@@ -297,7 +342,6 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
   };
 
   // Filter messages for current discussion
-  const myId = userProfile.role === 'student' ? (userProfile.studentId || '2023-10492') : (userProfile.facultyId || 'fac-1');
   
   const isActiveChannel = channels.some(ch => ch.id === activeContactId);
   
@@ -407,30 +451,42 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
           {/* Active Channels / Subject Groups */}
           <div>
             <span className="text-[9px] font-black uppercase text-zinc-400 tracking-widest px-2.5 block pb-2">Subject Class Rooms</span>
-            {filteredChannels.map(ch => (
-              <button
-                key={ch.id}
-                onClick={() => {
-                  setActiveContactId(ch.id);
-                  setMobileShowChat(true);
-                }}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all mb-1 ${
-                  activeContactId === ch.id
-                    ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
-                    : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
-                }`}
-              >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
-                  activeContactId === ch.id ? 'bg-zinc-950/20 text-white' : 'bg-emerald-500/10 text-emerald-500'
-                }`}>
-                  #
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className={`text-xs font-extrabold truncate ${activeContactId === ch.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{ch.name}</h4>
-                  <p className={`text-[9px] truncate uppercase mt-0.5 font-bold ${activeContactId === ch.id ? 'text-emerald-100' : 'text-zinc-500 dark:text-zinc-400'}`}>{ch.code} Room</p>
-                </div>
-              </button>
-            ))}
+            {filteredChannels.map(ch => {
+              const unreadCount = getUnreadCount(ch.id);
+              return (
+                <button
+                  key={ch.id}
+                  onClick={() => {
+                    setActiveContactId(ch.id);
+                    setMobileShowChat(true);
+                  }}
+                  className={`w-full flex items-center justify-between gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all mb-1 ${
+                    activeContactId === ch.id
+                      ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
+                      activeContactId === ch.id ? 'bg-zinc-950/20 text-white' : 'bg-emerald-500/10 text-emerald-500'
+                    }`}>
+                      #
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className={`text-xs font-extrabold truncate ${activeContactId === ch.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{ch.name}</h4>
+                      <p className={`text-[9px] truncate uppercase mt-0.5 font-bold ${activeContactId === ch.id ? 'text-emerald-100' : 'text-zinc-500 dark:text-zinc-400'}`}>{ch.code} Room</p>
+                    </div>
+                  </div>
+                  {unreadCount > 0 && (
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ${
+                      activeContactId === ch.id ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-black'
+                    }`}>
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {filteredChannels.length === 0 && (
               <p className="text-[10px] text-zinc-405 italic px-2.5 py-1">No matching subject rooms</p>
             )}
@@ -439,29 +495,41 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
           {/* Active Conversations */}
           <div>
             <span className="text-[9px] font-black uppercase text-zinc-400 tracking-widest px-2.5 block pb-2">Direct Chats</span>
-            {filteredContacts.map(c => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setActiveContactId(c.id);
-                  setMobileShowChat(true);
-                }}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all mb-1 ${
-                  activeContactId === c.id
-                    ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
-                    : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
-                }`}
-              >
-                <div className="relative shrink-0">
-                  <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover border border-zinc-200 dark:border-zinc-855" referrerPolicy="no-referrer" />
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-950" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className={`text-xs font-extrabold truncate ${activeContactId === c.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{c.name}</h4>
-                  <p className={`text-[9px] truncate uppercase font-extrabold mt-0.5 ${activeContactId === c.id ? 'text-emerald-100' : 'text-zinc-500 dark:text-zinc-400'}`}>{c.role} • {c.courseCode}</p>
-                </div>
-              </button>
-            ))}
+            {filteredContacts.map(c => {
+              const unreadCount = getUnreadCount(c.id);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setActiveContactId(c.id);
+                    setMobileShowChat(true);
+                  }}
+                  className={`w-full flex items-center justify-between gap-3 p-2.5 rounded-xl text-left border cursor-pointer transition-all mb-1 ${
+                    activeContactId === c.id
+                      ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/50 text-zinc-900 dark:text-zinc-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="relative shrink-0">
+                      <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover border border-zinc-200 dark:border-zinc-855" referrerPolicy="no-referrer" />
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-950" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className={`text-xs font-extrabold truncate ${activeContactId === c.id ? 'text-white' : 'text-zinc-900 dark:text-zinc-100'}`}>{c.name}</h4>
+                      <p className={`text-[9px] truncate uppercase font-extrabold mt-0.5 ${activeContactId === c.id ? 'text-emerald-100' : 'text-zinc-500 dark:text-zinc-400'}`}>{c.role} • {c.courseCode}</p>
+                    </div>
+                  </div>
+                  {unreadCount > 0 && (
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ${
+                      activeContactId === c.id ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-black'
+                    }`}>
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {filteredContacts.length === 0 && (
               <p className="text-[10px] text-zinc-405 italic px-2.5 py-1">No active direct chats matching</p>
             )}
@@ -642,7 +710,11 @@ export default function Messages({ userProfile, classes, enrollments, accessibil
                               </div>
                               <button 
                                 onClick={() => {
-                                  alert(`Mock downloading resource file: ${m.attachmentFile?.name}`);
+                                  if (typeof window !== 'undefined' && (window as any).showToast) {
+                                    (window as any).showToast(`Downloading class resource: ${m.attachmentFile?.name}`, "success");
+                                  } else {
+                                    alert(`Mock downloading resource file: ${m.attachmentFile?.name}`);
+                                  }
                                   speakText(`Beginning secure download for class resource ${m.attachmentFile?.name}`, accessibility.readAloud);
                                 }}
                                 className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 hover:bg-emerald-500/10 hover:text-emerald-500 cursor-pointer"

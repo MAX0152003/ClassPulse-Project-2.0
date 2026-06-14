@@ -165,6 +165,7 @@ export default function DashboardAdmin({
 
   // Local states for announcements, searching, and profile
   const [userDirectorySearch, setUserDirectorySearch] = React.useState('');
+  const [adminClassSearchQuery, setAdminClassSearchQuery] = React.useState('');
   
   const [isAnnFormOpen, setIsAnnFormOpen] = React.useState(false);
   const [annTitle, setAnnTitle] = React.useState('');
@@ -209,7 +210,11 @@ export default function DashboardAdmin({
   const handleExportAllGlobalAttendance = () => {
     if (attendanceRecords.length === 0) {
       speakText("No attendance records found to export.", accessibility.readAloud);
-      alert("The attendance records ledger is currently empty.");
+      if (typeof window !== 'undefined' && (window as any).showToast) {
+        (window as any).showToast("The attendance records ledger is currently empty. No logs to export.", "warning");
+      } else {
+        alert("The attendance records ledger is currently empty.");
+      }
       return;
     }
     
@@ -254,7 +259,11 @@ export default function DashboardAdmin({
     const filteredRecords = attendanceRecords.filter(r => r.classId === classId);
     if (filteredRecords.length === 0) {
       speakText(`No attendance records found for ${cls.name}`, accessibility.readAloud);
-      alert(`There are currently no registered attendance logs in the database for course ${cls.code} - ${cls.name}.`);
+      if (typeof window !== 'undefined' && (window as any).showToast) {
+        (window as any).showToast(`Empty database: No attendance logs for ${cls.code} - ${cls.name}.`, "warning");
+      } else {
+        alert(`There are currently no registered attendance logs in the database for course ${cls.code} - ${cls.name}.`);
+      }
       return;
     }
     
@@ -292,7 +301,11 @@ export default function DashboardAdmin({
   const handleAddUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName || !newUserEmail || !newUserID) {
-      alert("Please fill in name, email, and ID fields.");
+      if (typeof window !== 'undefined' && (window as any).showToast) {
+        (window as any).showToast("Validation Error: Please fill in all required user fields.", "error");
+      } else {
+        alert("Please fill in name, email, and ID fields.");
+      }
       return;
     }
 
@@ -335,7 +348,11 @@ export default function DashboardAdmin({
     e.preventDefault();
     if (!editingUser) return;
     if (!editUserName || !editUserEmail || !editUserUid) {
-      alert("Please fill in names, email, and ID coordinates.");
+      if (typeof window !== 'undefined' && (window as any).showToast) {
+        (window as any).showToast("Validation Failure: Please fill in all edit profile inputs.", "error");
+      } else {
+        alert("Please fill in names, email, and ID coordinates.");
+      }
       return;
     }
     
@@ -485,7 +502,11 @@ export default function DashboardAdmin({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
               <button 
                 onClick={() => {
-                  alert("Broadcast Modal Initiated. Preparing circular dispatch across student grids.");
+                  if (typeof window !== 'undefined' && (window as any).showToast) {
+                    (window as any).showToast("Circular circular dispatched successfully to all university dashboards.", "success");
+                  } else {
+                    alert("Broadcast Modal Initiated. Preparing circular dispatch across student grids.");
+                  }
                   setScreen('messages');
                   speakText("Transferring context to Bulletin composer", accessibility.readAloud);
                 }}
@@ -526,7 +547,11 @@ export default function DashboardAdmin({
               <button 
                 onClick={() => {
                   speakText("Synchronizing university directory databases. Clearing cached session headers.", accessibility.readAloud);
-                  alert("University directories synced with global registrar ledger successfully.");
+                  if (typeof window !== 'undefined' && (window as any).showToast) {
+                    (window as any).showToast("University registries synchronized with the registrar databases successfully.", "success");
+                  } else {
+                    alert("University directories synced with global registrar ledger successfully.");
+                  }
                 }}
                 className="p-3 text-left rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-purple-500/30 bg-zinc-50/50 dark:bg-zinc-900/20 hover:bg-zinc-50 dark:hover:bg-purple-500/5 transition-all text-zinc-850 dark:text-zinc-200 cursor-pointer"
               >
@@ -665,38 +690,38 @@ export default function DashboardAdmin({
                           const data = dailyAttendanceData[hoveredTrendIndex];
                           return (
                             <div 
-                              className="absolute z-20 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
+                              className="absolute z-20 p-3 rounded-xl bg-white dark:bg-zinc-950/95 text-zinc-800 dark:text-white border border-zinc-200 dark:border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
                               style={{
                                 left: `${(data.x / 350) * 100}%`,
                                 bottom: `${(150 - data.y + 12) / 150 * 100}%`,
                                 transform: 'translateX(-50%)',
                               }}
                             >
-                              <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
-                                <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{data.label} Logs</span>
-                                <span className="text-[8px] font-mono text-zinc-500">ADM CORE</span>
+                              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1 mb-1">
+                                <span className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">{data.label} Logs</span>
+                                <span className="text-[8px] font-mono text-zinc-400 dark:text-zinc-550">ADM CORE</span>
                               </div>
-                              <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
+                              <p className="text-[10px] font-bold text-zinc-900 dark:text-zinc-100">{data.date}</p>
                               
                               <div className="grid grid-cols-3 gap-1 mt-1 text-[9px] font-mono">
-                                <div className="bg-emerald-500/10 p-1 rounded text-emerald-300">
+                                <div className="bg-emerald-500/10 p-1 rounded text-emerald-600 dark:text-emerald-300">
                                   <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Pres</p>
                                   <p className="font-extrabold">{data.active}</p>
                                 </div>
-                                <div className="bg-amber-500/10 p-1 rounded text-amber-300">
+                                <div className="bg-amber-500/10 p-1 rounded text-amber-600 dark:text-amber-300">
                                   <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Late</p>
                                   <p className="font-extrabold">{data.late}</p>
                                 </div>
-                                <div className="bg-red-500/10 p-1 rounded text-red-300">
+                                <div className="bg-red-500/10 p-1 rounded text-red-600 dark:text-red-300">
                                   <p className="text-[7px] text-zinc-500 uppercase tracking-wider">Abs</p>
                                   <p className="font-extrabold">{data.absent}</p>
                                 </div>
                               </div>
                               
-                              <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
-                                Avg Attendance: <strong className="text-emerald-400 text-[10px]">{data.value}%</strong>
+                              <p className="text-[8px] text-zinc-500 dark:text-zinc-450 mt-1 leading-normal border-t border-zinc-100 dark:border-zinc-900/50 pt-1">
+                                Avg Attendance: <strong className="text-emerald-600 dark:text-emerald-400 text-[10px]">{data.value}%</strong>
                               </p>
-                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-white dark:bg-zinc-950 border-r border-b border-zinc-200 dark:border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
                             </div>
                           );
                         })()}
@@ -797,23 +822,23 @@ export default function DashboardAdmin({
                           const data = enrollmentData[hoveredEnrollmentIndex];
                           return (
                             <div 
-                              className="absolute z-20 p-3 rounded-xl bg-zinc-950/95 text-white border border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
+                              className="absolute z-20 p-3 rounded-xl bg-white dark:bg-zinc-950/95 text-zinc-800 dark:text-white border border-zinc-200 dark:border-zinc-800 shadow-xl pointer-events-none transition-all duration-150 backdrop-blur-md flex flex-col gap-1 w-52 text-left"
                               style={{
                                 left: `${(data.x / 350) * 100}%`,
                                 bottom: `${(150 - data.y + 12) / 150 * 100}%`,
                                 transform: 'translateX(-50%)',
                               }}
                             >
-                              <div className="flex items-center justify-between border-b border-zinc-900 pb-1 mb-1">
-                                <span className="text-[9px] font-mono font-bold text-indigo-400 uppercase tracking-widest">{data.label} Roster</span>
-                                <span className="text-[9px] font-mono text-indigo-300 font-bold">{data.change}</span>
+                              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1 mb-1">
+                                <span className="text-[9px] font-mono font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{data.label} Roster</span>
+                                <span className="text-[9px] font-mono text-indigo-500 dark:text-indigo-300 font-bold">{data.change}</span>
                               </div>
-                              <p className="text-[10px] font-bold text-zinc-100">{data.date}</p>
-                              <p className="text-[9.5px] text-zinc-300 leading-tight mt-0.5">{data.desc}</p>
-                              <p className="text-[8px] text-zinc-400 mt-1 leading-normal border-t border-zinc-900/50 pt-1">
-                                Total Enrolled: <strong className="text-indigo-400 text-[10px]">{data.value}</strong>
+                              <p className="text-[10px] font-bold text-zinc-900 dark:text-zinc-100">{data.date}</p>
+                              <p className="text-[9.5px] text-zinc-650 dark:text-zinc-300 leading-tight mt-0.5">{data.desc}</p>
+                              <p className="text-[8px] text-zinc-500 dark:text-zinc-450 mt-1 leading-normal border-t border-zinc-100 dark:border-zinc-900/50 pt-1">
+                                Total Enrolled: <strong className="text-indigo-600 dark:text-indigo-400 text-[10px]">{data.value}</strong>
                               </p>
-                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-zinc-950 border-r border-b border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
+                              <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-white dark:bg-zinc-950 border-r border-b border-zinc-200 dark:border-zinc-800 transform -translate-x-1/2 translate-y-1/2 rotate-45" />
                             </div>
                           );
                         })()}
@@ -1641,6 +1666,29 @@ export default function DashboardAdmin({
               <h2 className="text-xl font-black tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">Master Schedules & Offerings</h2>
               <p className="text-xs text-zinc-400">Review University curriculum timetables, assigned instructors, and enrolled groups</p>
             </div>
+            
+            {/* Fast Offerings searching bar */}
+            <div className="relative w-full sm:max-w-xs shrink-0 select-none">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-400 pointer-events-none">
+                <Search className="w-4 h-4 text-emerald-500" />
+              </span>
+              <input
+                type="text"
+                value={adminClassSearchQuery}
+                onChange={(e) => setAdminClassSearchQuery(e.target.value)}
+                placeholder="Search classes or faculty..."
+                className="w-full pl-9 pr-8 py-2 bg-white dark:bg-zinc-950 border border-zinc-205 dark:border-zinc-850 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold"
+              />
+              {adminClassSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setAdminClassSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-650 font-bold cursor-pointer font-extrabold text-xs"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl relative overflow-hidden flex items-start gap-3">
@@ -1654,11 +1702,30 @@ export default function DashboardAdmin({
           </div>
 
           {/* Grid Layout of Subjects grouped by code */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {classes.map(cls => {
-              // Extract count of enrolled students
-              const studentMatches = enrollments.filter(e => e.classId === cls.id).length;
+          {(() => {
+            const todayIndex = new Date().getDay();
+            const dayMap: Record<number, string> = {
+              1: 'Mon',
+              2: 'Tue',
+              3: 'Wed',
+              4: 'Thu',
+              5: 'Fri',
+              6: 'Sat',
+              0: 'Sun'
+            };
+            const todayLabel = dayMap[todayIndex] || 'Mon';
 
+            const filteredClasses = classes.filter(cls => 
+              cls.name.toLowerCase().includes(adminClassSearchQuery.toLowerCase()) || 
+              cls.code.toLowerCase().includes(adminClassSearchQuery.toLowerCase()) ||
+              cls.facultyName.toLowerCase().includes(adminClassSearchQuery.toLowerCase()) ||
+              cls.room.toLowerCase().includes(adminClassSearchQuery.toLowerCase())
+            );
+
+            const todayClasses = filteredClasses.filter(cls => cls.days.includes(todayLabel));
+            const otherClasses = filteredClasses.filter(cls => !cls.days.includes(todayLabel));
+
+            const renderClassCard = (cls: typeof classes[0]) => {
               return (
                 <div 
                   key={cls.id}
@@ -1707,8 +1774,53 @@ export default function DashboardAdmin({
                   </div>
                 </div>
               );
-            })}
-          </div>
+            };
+
+            return (
+              <div className="space-y-6">
+                {filteredClasses.length === 0 ? (
+                  <div className="p-12 text-center rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-850 bg-white dark:bg-zinc-950/60 animate-fade-in space-y-2">
+                    <BookOpen className="w-8 h-8 text-emerald-500/60 mx-auto mb-1" />
+                    <p className="text-xs text-zinc-500 font-bold">No classes match "{adminClassSearchQuery}"</p>
+                    <p className="text-[10px] text-zinc-400">Try refining your search terms by class code, subject name, department, or faculty name.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Today's Schedule */}
+                    {todayClasses.length > 0 && (
+                      <div className="space-y-3 flex flex-col text-left">
+                        <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          Current Classes ({todayLabel})
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {todayClasses.map(cls => renderClassCard(cls))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Future/Other Schedules */}
+                    <div className="space-y-3 text-left">
+                      {otherClasses.length > 0 && (
+                        <h4 className="text-xs font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-widest pt-2">
+                          Future Schedule
+                        </h4>
+                      )}
+                      {otherClasses.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {otherClasses.map(cls => renderClassCard(cls))}
+                        </div>
+                      ) : (
+                        todayClasses.length === 0 && (
+                          <p className="text-xs text-zinc-500 italic text-center">No classes scheduled.</p>
+                        )
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </motion.div>
       )}
 
@@ -1888,6 +2000,7 @@ export default function DashboardAdmin({
         enrollments={enrollments}
         records={attendanceRecords}
         facultyStatuses={[]}
+        isDark={accessibility.theme === 'dark'}
       />
 
     </div>

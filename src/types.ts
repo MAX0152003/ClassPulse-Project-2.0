@@ -10,6 +10,7 @@ export interface ClassSession {
   days: string[]; // e.g. ['MW', 'TTh', 'FS', 'A']
   facultyName: string;
   facultyId: string;
+  credits?: number;
   facultyStatusUpdate?: 'none' | 'attend' | 'cancel' | 'late';
   tempRoom?: string;
   lastUpdateTimestamp?: number;

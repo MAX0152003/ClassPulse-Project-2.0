@@ -20,6 +20,9 @@ import {
   MapPin, 
   User, 
   ChevronRight, 
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
   FileText, 
   Sparkles,
   Camera,
@@ -36,7 +39,9 @@ import {
   Eye,
   EyeOff,
   Trash2,
-  Download
+  Download,
+  SlidersHorizontal,
+  Users
 } from 'lucide-react';
 import { speakText } from './AccessibilitySettings';
 import AlarmClock, { triggerNativeChime } from './AlarmClock';
@@ -88,6 +93,9 @@ export default function DashboardStudent({
   // State for search query inside My Schedule
   const [scheduleSearch, setScheduleSearch] = React.useState('');
   
+  // Card elements expanded inside Schedule listing
+  const [expandedCardIds, setExpandedCardIds] = React.useState<Record<string, boolean>>({});
+  
   // Scanner stimulation state engines
   const [selectedScanClass, setSelectedScanClass] = React.useState<string>(classes[0]?.id || '');
   const [isScanning, setIsScanning] = React.useState(false);
@@ -95,7 +103,6 @@ export default function DashboardStudent({
   const [scanResult, setScanResult] = React.useState<{ success: boolean; message: string } | null>(null);
 
   // Real Camera scan support
-  const [scannerType, setScannerType] = React.useState<'live' | 'simulation'>('live');
   const [cameraError, setCameraError] = React.useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = React.useState<string>('');
   const [availableCameras, setAvailableCameras] = React.useState<Array<{ id: string, label: string }>>([]);
@@ -275,8 +282,13 @@ export default function DashboardStudent({
       setIsScanning(true);
       speakText("Starting real-time camera feed. Please point your lens at the QR code.", accessibility.readAloud);
 
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const cameraConstraint = isMobile 
+        ? { facingMode: "environment" } 
+        : (selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" });
+
       await html5QrCodeRef.current.start(
-        selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" },
+        cameraConstraint,
         {
           fps: 15,
           qrbox: (width, height) => {
@@ -297,9 +309,28 @@ export default function DashboardStudent({
       try {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length > 0) {
-          setAvailableCameras(devices.map(d => ({ id: d.id, label: d.label || `Camera ${devices.indexOf(d) + 1}` })));
-          if (!selectedCameraId) {
-            setSelectedCameraId(devices[0].id);
+          if (isMobile) {
+            // Primarily keep back/rear cameras labeled for reference
+            const backCams = devices.filter(d => {
+              const label = (d.label || '').toLowerCase();
+              return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('facing 1') || label.includes('main');
+            });
+            if (backCams.length > 0) {
+              setAvailableCameras(backCams.map(d => ({ id: d.id, label: d.label || `Back Camera` })));
+              if (!selectedCameraId || !backCams.some(c => c.id === selectedCameraId)) {
+                setSelectedCameraId(backCams[0].id);
+              }
+            } else {
+              setAvailableCameras(devices.map(d => ({ id: d.id, label: d.label || `Camera ${devices.indexOf(d) + 1}` })));
+              if (!selectedCameraId) {
+                setSelectedCameraId(devices[0].id);
+              }
+            }
+          } else {
+            setAvailableCameras(devices.map(d => ({ id: d.id, label: d.label || `Camera ${devices.indexOf(d) + 1}` })));
+            if (!selectedCameraId) {
+              setSelectedCameraId(devices[0].id);
+            }
           }
         }
       } catch (err) {
@@ -396,7 +427,7 @@ export default function DashboardStudent({
   React.useEffect(() => {
     if (activeScreen !== 'attendance') {
       stopLiveCamera();
-    } else if (scannerType === 'live') {
+    } else {
       const timer = setTimeout(() => {
         startLiveCamera();
       }, 300);
@@ -405,7 +436,7 @@ export default function DashboardStudent({
     return () => {
       stopLiveCamera();
     };
-  }, [activeScreen, scannerType]);
+  }, [activeScreen]);
 
   const handleOpenSubjectDetails = (cls: ClassSession) => {
     setSelectedClassDetail(cls);
@@ -431,7 +462,11 @@ export default function DashboardStudent({
     );
 
     if (studentRecs.length === 0) {
-      alert("No attendance records found to export.");
+      if (typeof window !== 'undefined' && (window as any).showToast) {
+        (window as any).showToast("No attendance logs found to export of this student.", "warning");
+      } else {
+        alert("No attendance records found to export.");
+      }
       speakText("No attendance records found to export.", accessibility.readAloud);
       return;
     }
@@ -817,11 +852,58 @@ export default function DashboardStudent({
             )}
           </div>
 
+          {/* Live Instructors Directory (Campus consultation hours & coordinates) */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-zinc-100 dark:border-zinc-900">
+              <div>
+                <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-emerald-500 animate-pulse" />
+                  Live Instructors Directory
+                </h3>
+                <p className="text-xs text-zinc-400">Campus consultation hours and coordinates</p>
+              </div>
+              <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Synced</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {facultyStatuses.map(fac => (
+                <div key={fac.id} className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-855 flex items-center justify-between text-left">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img 
+                      src={fac.avatar} 
+                      alt={fac.name} 
+                      className="w-10 h-10 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0" 
+                    />
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">{fac.name}</h4>
+                      <p className="text-[10px] text-zinc-500 truncate">{fac.room || 'Consulting Room 303'}</p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 pl-2">
+                    {fac.status === 'available' ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 uppercase tracking-widest flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> available
+                      </span>
+                    ) : fac.status === 'in-class' ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 uppercase tracking-widest flex items-center gap-1">
+                        <Clock className="w-3 h-3 animate-[spin_2s_linear_infinite]" /> in class
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-red-500 bg-red-500/10 border border-red-500/20 uppercase tracking-widest flex items-center gap-1">
+                        <X className="w-3 h-3" /> unavailable
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Student High-Fidelity Analytics & Tracking Suite */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             
             {/* 1. Attendance Progress Circular Ring & Academic standing tracker */}
-            <div className="md:col-span-4 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col justify-between space-y-4">
+            <div className="md:col-span-6 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col justify-between space-y-4">
               <div>
                 <span className="text-[9px] font-mono font-black uppercase text-zinc-400 tracking-widest block">Attendance Summary</span>
                 <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mt-1">Class Attendance Ring</h4>
@@ -893,42 +975,8 @@ export default function DashboardStudent({
               </button>
             </div>
 
-            {/* 2. Faculty availability coordinates status updates */}
-            <div className="md:col-span-4 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col justify-between space-y-3">
-              <div>
-                <span className="text-[9px] font-mono font-black uppercase text-zinc-400 tracking-widest block">Lecturers tracker</span>
-                <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mt-1">Faculty Availability Coordinate</h4>
-              </div>
-
-              <div className="space-y-2 max-h-36 overflow-y-auto pr-0.5">
-                {[
-                  { name: 'Dr. Ahmad Khan', status: 'available', dept: 'CS coordinator' },
-                  { name: 'Prof. Maria Santos', status: 'in-class', dept: 'Math instructor' },
-                  { name: 'Dr. Jose Rizal Jr', status: 'unavailable', dept: 'Lab instructor' }
-                ].map((fac, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850">
-                    <div className="text-left min-w-0">
-                      <h5 className="text-[10px] font-black text-zinc-800 dark:text-zinc-200 truncate">{fac.name}</h5>
-                      <span className="text-[8px] font-mono text-zinc-400 uppercase tracking-widest block">{fac.dept}</span>
-                    </div>
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wide ${
-                      fac.status === 'available' ? 'bg-emerald-500/10 text-emerald-500' :
-                      fac.status === 'in-class' ? 'bg-amber-500/10 text-amber-500' :
-                      'bg-zinc-200 dark:bg-zinc-850 text-zinc-400'
-                    }`}>
-                      {fac.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-[9px] text-zinc-400 text-left leading-normal">
-                Coordinate standings update instantly as professors configure their physical campuses status.
-              </p>
-            </div>
-
             {/* 3. Upcoming physical lectures timetable */}
-            <div className="md:col-span-4 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col justify-between space-y-4">
+            <div className="md:col-span-6 p-5 rounded-3xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm flex flex-col justify-between space-y-4">
               <div>
                 <span className="text-[9px] font-mono font-black uppercase text-zinc-400 tracking-widest block">Term calendar</span>
                 <h4 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-100 mt-1">Upcoming Lectures today</h4>
@@ -1078,50 +1126,6 @@ export default function DashboardStudent({
                 </div>
               </div>
 
-              {/* Faculty Availability List */}
-              <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-zinc-100 dark:border-zinc-900">
-                  <div>
-                    <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100">Live Instructors Directory</h3>
-                    <p className="text-xs text-zinc-400">Campus consultation hours and coordinates</p>
-                  </div>
-                  <span className="text-[10px] font-bold bg-emerald-505 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Synced</span>
-                </div>
-
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-                  {facultyStatuses.map(fac => (
-                    <div key={fac.id} className="py-3 flex items-center justify-between first:pt-0 last:pb-0 text-left">
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={fac.avatar} 
-                          alt={fac.name} 
-                          className="w-10 h-10 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 shrink-0" 
-                        />
-                        <div>
-                          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{fac.name}</h4>
-                          <p className="text-[11px] text-zinc-500">{fac.room || 'Consulting Room 303'}</p>
-                        </div>
-                      </div>
-                      <div>
-                        {fac.status === 'available' ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 uppercase tracking-widest flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" /> available
-                          </span>
-                        ) : fac.status === 'in-class' ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 uppercase tracking-widest flex items-center gap-1">
-                            <Clock className="w-3 h-3 animate-[spin_2s_linear_infinite]" /> in class
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold text-red-500 bg-red-500/10 border border-red-500/20 uppercase tracking-widest flex items-center gap-1">
-                            <X className="w-3 h-3" /> unavailable
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
             </div>
 
             {/* RIGHT SIDEBAR: Live Clock & Quick Checklist reminder widgets */}
@@ -1179,7 +1183,7 @@ export default function DashboardStudent({
             <div>
               <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
                 <Calendar className="w-5.5 h-5.5 text-emerald-500" />
-                Roster Classes Directory
+                Class Schedules
               </h2>
               <p className="text-xs text-zinc-400">Search and click any card to inspect Class members or trend graph insights.</p>
             </div>
@@ -1194,101 +1198,230 @@ export default function DashboardStudent({
                 value={scheduleSearch}
                 onChange={(e) => setScheduleSearch(e.target.value)}
                 placeholder="Search catalog code or title..."
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-855 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
             </div>
           </div>
 
           {/* Schedule Lists Render */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {classes
-              .filter(cls => 
-                cls.name.toLowerCase().includes(scheduleSearch.toLowerCase()) || 
-                cls.code.toLowerCase().includes(scheduleSearch.toLowerCase())
-              )
-              .map(cls => {
-                const isEnrolled = enrollments.some(
-                  e => e.classId === cls.id && (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email) && !e.deletedByStudent
-                );
+          {(() => {
+            const filtered = classes.filter(cls => 
+              cls.name.toLowerCase().includes(scheduleSearch.toLowerCase()) || 
+              cls.code.toLowerCase().includes(scheduleSearch.toLowerCase())
+            );
 
-                // Compute student class standings inside active rosters
-                const studentRecordsForClass = attendanceRecords.filter(
-                  r => r.classId === cls.id && (r.studentId === userProfile.studentId || r.studentName === userProfile.name)
-                );
-                const absentsForClass = studentRecordsForClass.filter(r => r.status === 'absent');
-                const countAbsentsForClass = absentsForClass.length;
+            const todayIndex = new Date().getDay();
+            const dayMap: Record<number, string> = {
+              1: 'Mon',
+              2: 'Tue',
+              3: 'Wed',
+              4: 'Thu',
+              5: 'Fri',
+              6: 'Sat',
+              0: 'Sun'
+            };
+            const todayLabel = dayMap[todayIndex] || 'Mon';
 
-                let maxConsecutive = 0;
-                let currConsecutive = 0;
-                const sortedRecs = [...studentRecordsForClass].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                for (const r of sortedRecs) {
-                  if (r.status === 'absent') {
-                    currConsecutive++;
-                    if (currConsecutive > maxConsecutive) maxConsecutive = currConsecutive;
-                  } else {
-                    currConsecutive = 0;
-                  }
+            const todayClasses = filtered.filter(cls => cls.days.includes(todayLabel));
+            const otherClasses = filtered.filter(cls => !cls.days.includes(todayLabel));
+
+            const renderClassCard = (cls: typeof classes[0]) => {
+              const isEnrolled = enrollments.some(
+                e => e.classId === cls.id && (e.studentId === userProfile.studentId || e.studentEmail === userProfile.email) && !e.deletedByStudent
+              );
+
+              // Compute student class standings inside active rosters
+              const studentRecordsForClass = attendanceRecords.filter(
+                r => r.classId === cls.id && (r.studentId === userProfile.studentId || r.studentName === userProfile.name)
+              );
+              const absentsForClass = studentRecordsForClass.filter(r => r.status === 'absent');
+              const countAbsentsForClass = absentsForClass.length;
+
+              let maxConsecutive = 0;
+              let currConsecutive = 0;
+              const sortedRecs = [...studentRecordsForClass].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+              for (const r of sortedRecs) {
+                if (r.status === 'absent') {
+                  currConsecutive++;
+                  if (currConsecutive > maxConsecutive) maxConsecutive = currConsecutive;
+                } else {
+                  currConsecutive = 0;
                 }
+              }
 
-                let standingLabel = 'Good Standing';
-                let standingColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-450';
-                if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
-                  standingLabel = '🚫 Dropped';
-                  standingColor = 'bg-red-500/10 text-red-600 dark:text-red-400';
-                } else if (countAbsentsForClass >= 3) {
-                  standingLabel = '⚠️ Warning';
-                  standingColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-505';
-                }
+              let standingLabel = 'Good Standing';
+              let standingColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-450';
+              if (countAbsentsForClass >= 5 || maxConsecutive >= 3) {
+                standingLabel = '🚫 Dropped';
+                standingColor = 'bg-red-500/10 text-red-600 dark:text-red-400';
+              } else if (countAbsentsForClass >= 3) {
+                standingLabel = '⚠️ Warning';
+                standingColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-505';
+              }
 
-                return (
-                  <div 
-                    key={cls.id}
-                    onClick={() => handleOpenSubjectDetails(cls)}
-                    className="p-5 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-855 shadow-xs hover:border-emerald-500/20 transition-all text-left cursor-pointer hover:shadow-md"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="px-2.5 py-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-500/10">
-                          {cls.code}
-                        </span>
-                        <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 mt-2.5">{cls.name}</h3>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wider uppercase ${
-                          isEnrolled 
-                            ? 'bg-blue-600 text-white font-extrabold' 
-                            : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400'
-                        }`}>
-                          {isEnrolled ? 'Enrolled' : 'Not Joined'}
-                        </span>
-                        {isEnrolled && (
-                          <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-md ${standingColor}`}>
-                            {standingLabel}
-                          </span>
-                        )}
-                      </div>
+              const isExpanded = !!expandedCardIds[cls.id];
+              const toggleExpand = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                setExpandedCardIds(prev => ({
+                  ...prev,
+                  [cls.id]: !prev[cls.id]
+                }));
+              };
+
+              return (
+                <div 
+                  key={cls.id}
+                  onClick={() => handleOpenSubjectDetails(cls)}
+                  className="p-5 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-855 shadow-xs hover:border-emerald-500/20 transition-all text-left cursor-pointer hover:shadow-md"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="px-2.5 py-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-500/10">
+                        {cls.code}
+                      </span>
+                      <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100 mt-2.5">{cls.name}</h3>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-900">
-                      <div>
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">TIMING</p>
-                        <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mt-1">
-                          <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                          {cls.startTime} - {cls.endTime}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">TIMETABLE DAYS</p>
-                        <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mt-1">
-                          <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                          {cls.days.join(', ')} ({cls.room})
-                        </p>
-                      </div>
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wider uppercase ${
+                        isEnrolled 
+                          ? 'bg-blue-600 text-white font-extrabold' 
+                          : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400'
+                      }`}>
+                        {isEnrolled ? 'Enrolled' : 'Not Joined'}
+                      </span>
+                      {isEnrolled && (
+                        <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-md ${standingColor}`}>
+                          {standingLabel}
+                        </span>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-          </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-900">
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">TIMING</p>
+                      <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mt-1">
+                        <Clock className="w-3.5 h-3.5 text-zinc-405" />
+                        {cls.startTime} - {cls.endTime}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">TIMETABLE DAYS</p>
+                      <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 mt-1">
+                        <Calendar className="w-3.5 h-3.5 text-zinc-405" />
+                        {cls.days.join(', ')} ({cls.room})
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle button for custom details */}
+                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-900/60">
+                    <button
+                      id={`btn-details-${cls.id}`}
+                      type="button"
+                      onClick={toggleExpand}
+                      className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-emerald-600 dark:text-zinc-400 dark:hover:text-emerald-400 transition-colors py-1 px-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                    >
+                      {isExpanded ? (
+                        <>
+                          Hide Details <ChevronUp className="w-3.5 h-3.5" />
+                        </>
+                      ) : (
+                        <>
+                          Details <ChevronDown className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+                    
+                    <span className="text-[10px] font-medium text-zinc-450 italic">
+                      Click to inspect roster list
+                    </span>
+                  </div>
+
+                  {/* Expanded Section with Room Location, Instructor Name, and Credit details */}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden mt-4 pt-4 border-t border-dashed border-zinc-100 dark:border-zinc-900 space-y-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900/60">
+                            <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-450 uppercase tracking-widest flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-emerald-500" />
+                              ROOM LOCATION
+                            </p>
+                            <p className="text-xs font-extrabold text-zinc-850 dark:text-zinc-200 mt-1">
+                              {cls.room || 'Not Assigned'}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900/60">
+                            <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-450 uppercase tracking-widest flex items-center gap-1">
+                              <User className="w-3 h-3 text-emerald-500" />
+                              INSTRUCTOR
+                            </p>
+                            <p className="text-xs font-extrabold text-zinc-855 dark:text-zinc-200 mt-1 truncate" title={cls.facultyName}>
+                              {cls.facultyName || 'No Assigned Mentor'}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900/60">
+                            <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-450 uppercase tracking-widest flex items-center gap-1">
+                              <BookOpen className="w-3 h-3 text-emerald-500" />
+                              COURSE CREDIT
+                            </p>
+                            <p className="text-xs font-extrabold text-zinc-855 dark:text-zinc-200 mt-1">
+                              {cls.credits || 3} Credits
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Today's Schedule */}
+                {todayClasses.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Current Classes ({todayLabel})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {todayClasses.map(cls => renderClassCard(cls))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Future/Other Schedules */}
+                <div className="space-y-3">
+                  {otherClasses.length > 0 && (
+                    <h4 className="text-xs font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-widest pt-2">
+                      Future Schedule
+                    </h4>
+                  )}
+                  {otherClasses.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {otherClasses.map(cls => renderClassCard(cls))}
+                    </div>
+                  ) : (
+                    todayClasses.length === 0 && (
+                      <p className="text-xs text-zinc-500 italic">No classes scheduled.</p>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </motion.div>
       )}
 
@@ -1357,7 +1490,7 @@ export default function DashboardStudent({
                 </div>
 
                 {/* Device selectors selection drop down */}
-                {availableCameras.length > 1 && (
+                {!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && availableCameras.length > 1 && (
                   <div className="flex items-center justify-between gap-2.5 bg-zinc-150/15 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 px-3 py-2 rounded-xl">
                     <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">SELECT INPUT CAMERA:</span>
                     <select
@@ -1405,6 +1538,43 @@ export default function DashboardStudent({
                     </button>
                   )}
                 </div>
+
+                {/* Fallback Manual Secret Code Entry */}
+                <div className="pt-4 border-t border-zinc-200 dark:border-zinc-850 space-y-2 mt-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                      Can't scan? Enter session passcode
+                    </label>
+                    <span className="text-[9px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                      example: {classes[0]?.qrToken || 'QR_KEY_X82KA'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="manual-session-passcode-input"
+                      placeholder="Enter session passcode (e.g. QR_KEY_...)"
+                      className="flex-1 px-4 py-2.5 text-xs bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 focus:border-emerald-500 outline-none font-mono font-bold uppercase placeholder:normal-case text-zinc-800 dark:text-zinc-200 shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('manual-session-passcode-input') as HTMLInputElement;
+                        if (input && input.value.trim()) {
+                          handleDecodedText(input.value.trim());
+                        } else {
+                          if (typeof window !== 'undefined' && (window as any).showToast) {
+                            (window as any).showToast("Please enter a valid session key.", "warning");
+                          }
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white text-xs font-bold uppercase tracking-wider cursor-pointer active:scale-95 transition-all rounded-xl border border-zinc-200 dark:border-zinc-700"
+                    >
+                      Verify Code
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </form>
 
@@ -1424,40 +1594,7 @@ export default function DashboardStudent({
             )}
           </div>
 
-          {/* Historical Check-ins card lists */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 shadow-sm space-y-4">
-            <div>
-              <h3 className="font-extrabold text-base tracking-tight text-zinc-900 dark:text-zinc-100">Live Campus check-ins activity logs</h3>
-              <p className="text-xs text-zinc-400">Timetable logs verified by professor nodes</p>
-            </div>
-            
-            <div className="space-y-2.5">
-              {attendanceRecords
-                .filter(rec => rec.studentId === userProfile.studentId || rec.studentName === userProfile.name)
-                .slice().reverse()
-                .map(rec => (
-                  <div 
-                    key={rec.id}
-                    className="p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-900 bg-zinc-50/20 dark:bg-zinc-950/40 flex items-center justify-between text-left"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase">{rec.classCode}</span>
-                        <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100">{rec.className}</h4>
-                      </div>
-                      <p className="text-[10px] text-zinc-400 mt-1">{rec.date} standard timestamp {rec.time}</p>
-                    </div>
-                    <div>
-                      {rec.status === 'present' ? (
-                        <span className="px-2 py-0.5 text-[9px] font-black uppercase text-emerald-600 bg-emerald-500/15 border border-emerald-555 rounded-full">present</span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/15 border border-amber-555 rounded-full">late</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
+          {/* Historical Check-ins card lists hidden as requested */}
         </motion.div>
       )}
 
@@ -1488,7 +1625,6 @@ export default function DashboardStudent({
         </motion.div>
       )}
 
-      {/* 4. NOTIFICATIONS TAB */}
       {activeScreen === 'notifications' && (
         <motion.div
           key="notifications"
@@ -1496,7 +1632,7 @@ export default function DashboardStudent({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -15 }}
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-          className="max-w-xl mx-auto space-y-4 text-left"
+          className="max-w-4xl mx-auto space-y-4 text-left"
         >
           <div className="pb-1">
             <button 
@@ -1513,7 +1649,7 @@ export default function DashboardStudent({
             <div>
               <h2 className="text-lg font-black text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
                 <BellRing className="w-5 h-5 text-emerald-500" />
-                Notifications
+                Notifications & Scans Ledger
               </h2>
               <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">Administrative records & system alerts</p>
             </div>
@@ -1537,151 +1673,219 @@ export default function DashboardStudent({
             )}
           </div>
 
-          {/* Search and Classification Filters Block */}
-          <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-405 dark:text-zinc-500" />
-              <input
-                type="text"
-                value={notifSearch}
-                onChange={(e) => setNotifSearch(e.target.value)}
-                placeholder="Search notification logs..."
-                className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs font-medium placeholder-zinc-400 text-zinc-850 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              {notifSearch && (
-                <button
-                  type="button"
-                  onClick={() => setNotifSearch('')}
-                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Structured Classification Tabs */}
-            <div className="grid grid-cols-3 gap-1.5 pt-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('all');
-                  speakText("Showing all notifications", accessibility.readAloud);
-                }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'all'
-                    ? 'bg-neutral-900 dark:bg-zinc-800 text-white shadow-sm font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
-              >
-                <span>All</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-zinc-200 dark:bg-zinc-700 text-zinc-650 dark:text-zinc-200 font-bold">
-                  {notifications.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('alerts');
-                  speakText("Showing alerts and warnings only", accessibility.readAloud);
-                }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'alerts'
-                    ? 'bg-amber-500 text-neutral-950 font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
-              >
-                <span>⚠️ Alerts</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-amber-500/10 text-amber-900 dark:text-amber-200 font-bold">
-                  {notifications.filter(n => n.type === 'alert' || n.type === 'warning').length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifFilter('updates');
-                  speakText("Showing standard bulletins and status updates only", accessibility.readAloud);
-                }}
-                className={`py-1.5 px-3 rounded-lg text-[10px] font-extrabold tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  notifFilter === 'updates'
-                    ? 'bg-emerald-600 text-white font-black'
-                    : 'bg-white dark:bg-zinc-900/60 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-850'
-                }`}
-              >
-                <span>✅ Updates</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[8px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
-                  {notifications.filter(n => n.type === 'info' || n.type === 'success').length}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* List Section */}
-          <div className="space-y-2.5">
-            {(() => {
-              // Apply active classification search & type filter logic
-              const filtered = notifications.filter(notif => {
-                const matchesSearch = notif.title.toLowerCase().includes(notifSearch.toLowerCase()) || 
-                                     notif.message.toLowerCase().includes(notifSearch.toLowerCase());
-                
-                if (!matchesSearch) return false;
-
-                if (notifFilter === 'alerts') {
-                  return notif.type === 'alert' || notif.type === 'warning';
-                }
-                if (notifFilter === 'updates') {
-                  return notif.type === 'info' || notif.type === 'success';
-                }
-                return true;
-              });
-
-              if (filtered.length === 0) {
-                return (
-                  <div className="p-8 text-center rounded-2xl bg-zinc-50 dark:bg-zinc-950/20 border border-zinc-150 dark:border-zinc-850 space-y-2">
-                    <p className="text-xs text-zinc-400 font-bold">No notifications match your active search filter.</p>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Notifications (7 Cols) */}
+            <div className="md:col-span-7 space-y-4">
+              {/* Search and Classification Filters Block */}
+              <div className="flex gap-2 bg-zinc-50/50 dark:bg-zinc-950/40 p-3.5 rounded-2xl border border-zinc-150 dark:border-zinc-900">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-405 dark:text-zinc-500" />
+                  <input
+                    type="text"
+                    value={notifSearch}
+                    onChange={(e) => setNotifSearch(e.target.value)}
+                    placeholder="Search notification logs..."
+                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs font-medium placeholder-zinc-400 text-zinc-850 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  {notifSearch && (
                     <button
                       type="button"
-                      onClick={() => { setNotifSearch(''); setNotifFilter('all'); }}
-                      className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline cursor-pointer"
+                      onClick={() => setNotifSearch('')}
+                      className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200"
                     >
-                      Reset filters
+                      <X className="w-4 h-4" />
                     </button>
+                  )}
+                </div>
+
+                {/* Compact Dropdown Filter with Icon */}
+                <div className="relative shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-2.5 py-2">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                  <select
+                    value={notifFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as 'all' | 'alerts' | 'updates';
+                      setNotifFilter(val);
+                      speakText(`Filter set to ${val}`, accessibility.readAloud);
+                    }}
+                    className="bg-transparent text-xs font-black uppercase text-zinc-700 dark:text-zinc-300 outline-none border-none pr-6 cursor-pointer"
+                  >
+                    <option value="all" className="dark:bg-zinc-950">ALL ({notifications.length})</option>
+                    <option value="alerts" className="dark:bg-zinc-950">ALERTS ({notifications.filter(n => n.type === 'alert' || n.type === 'warning').length})</option>
+                    <option value="updates" className="dark:bg-zinc-950">UPDATES ({notifications.filter(n => n.type === 'info' || n.type === 'success').length})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* List Section */}
+              <div className="space-y-2.5">
+                {(() => {
+                  // Apply active classification search & type filter logic
+                  const filtered = notifications.filter(notif => {
+                    const matchesSearch = notif.title.toLowerCase().includes(notifSearch.toLowerCase()) || 
+                                         notif.message.toLowerCase().includes(notifSearch.toLowerCase());
+                    
+                    if (!matchesSearch) return false;
+
+                    if (notifFilter === 'alerts') {
+                      return notif.type === 'alert' || notif.type === 'warning';
+                    }
+                    if (notifFilter === 'updates') {
+                      return notif.type === 'info' || notif.type === 'success';
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="p-8 text-center rounded-2xl bg-zinc-50 dark:bg-zinc-955/20 border border-zinc-150 dark:border-zinc-850 space-y-2">
+                        <p className="text-xs text-zinc-400 font-bold">No notifications match your active search filter.</p>
+                        <button
+                          type="button"
+                          onClick={() => { setNotifSearch(''); setNotifFilter('all'); }}
+                          className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline cursor-pointer"
+                        >
+                          Reset filters
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((notif) => (
+                    <div 
+                      key={notif.id}
+                      className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-850 flex items-start gap-3.5 text-left shadow-xs transition-transform hover:translate-x-0.5"
+                    >
+                      <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                        notif.type === 'alert' ? 'bg-red-500/10 text-red-500' :
+                        notif.type === 'warning' ? 'bg-amber-500/10 text-amber-550' :
+                        notif.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
+                        'bg-blue-500/10 text-blue-500'
+                      }`}>
+                        <BellRing className="w-3.5 h-3.5 animate-pulse" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2.5">
+                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                            {notif.title}
+                            {!notif.read && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            )}
+                          </h4>
+                          <span className="text-[9px] font-mono text-zinc-400 tracking-wider font-semibold uppercase">{notif.timestamp}</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-450 dark:text-zinc-400 mt-1 leading-normal">
+                          {notif.message}
+                        </p>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Right Column: Recent Scans Ledger (5 Cols) */}
+            <div className="md:col-span-5 space-y-4">
+              {(() => {
+                const studentScans = attendanceRecords
+                  .filter(r => r.studentId === userProfile.studentId || r.studentName === userProfile.name)
+                  .sort((a, b) => {
+                    const parseDateTime = (rec: AttendanceRecord) => {
+                      try {
+                        return new Date(`${rec.date} ${rec.time}`).getTime();
+                      } catch (e) {
+                        return 0;
+                      }
+                    };
+                    return parseDateTime(b) - parseDateTime(a);
+                  });
+
+                return (
+                  <div className="p-5 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-855 shadow-xs space-y-4">
+                    <div>
+                      <h3 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest flex items-center gap-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        Recent Scans
+                      </h3>
+                      <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider mt-0.5 font-mono">
+                        Your real-time attendance check-in logs
+                      </p>
+                    </div>
+
+                    {studentScans.length === 0 ? (
+                      <div className="p-8 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
+                        <Clock className="w-6 h-6 text-zinc-300 dark:text-zinc-650 mx-auto mb-2" />
+                        <p className="text-xs text-zinc-500 italic">No attendance scans recorded.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                        {studentScans.slice(0, 8).map((scan) => {
+                          const isLate = scan.status === 'late';
+                          const isAbsent = scan.status === 'absent';
+                          return (
+                            <div 
+                              key={scan.id}
+                              className="p-3.5 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/30 border border-zinc-150/80 dark:border-zinc-900/60 flex items-start gap-3 transition-all hover:translate-x-0.5"
+                            >
+                              <div className={`p-1.5 rounded-lg shrink-0 ${
+                                isAbsent ? 'bg-red-500/10 text-red-500' :
+                                isLate ? 'bg-amber-500/10 text-amber-500' :
+                                'bg-emerald-500/10 text-emerald-500'
+                              }`}>
+                                {isAbsent ? (
+                                  <X className="w-3.5 h-3.5" />
+                                ) : isLate ? (
+                                  <Clock className="w-3.5 h-3.5 animate-pulse" />
+                                ) : (
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 font-mono">
+                                    {scan.classCode}
+                                  </span>
+                                  <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                    isAbsent ? 'bg-red-500/10 text-red-600 dark:text-red-400' :
+                                    isLate ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                                    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                  }`}>
+                                    {scan.status}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-black text-zinc-950 dark:text-zinc-100 truncate mt-0.5">
+                                  {scan.className}
+                                </p>
+                                
+                                <div className="flex items-center gap-3 mt-1.5 text-[9px] text-zinc-400 font-mono">
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    <Calendar className="w-3 h-3 text-zinc-300 dark:text-zinc-650" />
+                                    {scan.date}
+                                  </span>
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    <Clock className="w-3 h-3 text-zinc-300 dark:text-zinc-650" />
+                                    {scan.time}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {studentScans.length > 8 && (
+                          <p className="text-[9px] text-zinc-400 italic text-center pt-2">
+                            Showing last 8 registered logs
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
-              }
-
-              return filtered.map((notif) => (
-                <div 
-                  key={notif.id}
-                  className="p-4 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-850 flex items-start gap-3.5 text-left shadow-xs transition-transform hover:translate-x-0.5"
-                >
-                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
-                    notif.type === 'alert' ? 'bg-red-500/10 text-red-500' :
-                    notif.type === 'warning' ? 'bg-amber-500/10 text-amber-550' :
-                    notif.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
-                    'bg-blue-500/10 text-blue-500'
-                  }`}>
-                    <BellRing className="w-3.5 h-3.5 animate-pulse" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2.5">
-                      <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
-                        {notif.title}
-                        {!notif.read && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                        )}
-                      </h4>
-                      <span className="text-[9px] font-mono text-zinc-400 tracking-wider font-semibold uppercase">{notif.timestamp}</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-450 dark:text-zinc-400 mt-1 leading-normal">
-                      {notif.message}
-                    </p>
-                  </div>
-                </div>
-              ));
-            })()}
+              })()}
+            </div>
           </div>
         </motion.div>
       )}
@@ -1853,6 +2057,7 @@ export default function DashboardStudent({
         enrollments={enrollments}
         records={attendanceRecords}
         facultyStatuses={facultyStatuses}
+        isDark={accessibility.theme === 'dark'}
       />
 
       {/* Active student notification pop-up alarm */}

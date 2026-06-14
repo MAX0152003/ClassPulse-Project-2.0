@@ -15,11 +15,15 @@ interface AttendanceGraphProps {
   classCode: string;
   className: string;
   records: AttendanceRecord[];
+  isDark?: boolean;
 }
 
-export default function AttendanceGraph({ classId, classCode, className, records }: AttendanceGraphProps) {
+export default function AttendanceGraph({ classId, classCode, className, records, isDark: propIsDark }: AttendanceGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
+
+  // Compute theme dynamically inside rendering
+  const activeIsDark = propIsDark !== undefined ? propIsDark : document.documentElement.classList.contains('dark');
 
   // Filter records for this class
   const classRecords = records
@@ -88,7 +92,7 @@ export default function AttendanceGraph({ classId, classCode, className, records
             fill: true,
             tension: 0.4,
             pointBackgroundColor: '#10b981',
-            pointBorderColor: '#09090b',
+            pointBorderColor: activeIsDark ? '#09090b' : '#ffffff',
             pointBorderWidth: 2,
             pointRadius: 5,
             pointHoverRadius: 7,
@@ -103,8 +107,8 @@ export default function AttendanceGraph({ classId, classCode, className, records
             display: false,
           },
           tooltip: {
-            backgroundColor: '#09090b',
-            titleColor: '#f4f4f5',
+            backgroundColor: activeIsDark ? '#09090b' : '#ffffff',
+            titleColor: activeIsDark ? '#f4f4f5' : '#18181b',
             titleFont: {
               family: 'JetBrains Mono, monospace',
               size: 11,
@@ -115,7 +119,7 @@ export default function AttendanceGraph({ classId, classCode, className, records
               size: 11
             },
             bodyColor: '#10b981',
-            borderColor: '#27272a',
+            borderColor: activeIsDark ? '#27272a' : '#e4e4e7',
             borderWidth: 1.5,
             padding: 12,
             displayColors: false,
@@ -149,10 +153,10 @@ export default function AttendanceGraph({ classId, classCode, className, records
         scales: {
           x: {
             grid: {
-              color: 'rgba(255, 255, 255, 0.05)',
+              color: activeIsDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
             },
             ticks: {
-              color: '#a1a1aa',
+              color: activeIsDark ? '#a1a1aa' : '#71717a',
               font: {
                 family: 'JetBrains Mono, monospace',
                 size: 9
@@ -163,10 +167,10 @@ export default function AttendanceGraph({ classId, classCode, className, records
             min: 0,
             max: 110,
             grid: {
-              color: 'rgba(255, 255, 255, 0.05)',
+              color: activeIsDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
             },
             ticks: {
-              color: '#a1a1aa',
+              color: activeIsDark ? '#a1a1aa' : '#71717a',
               font: {
                 family: 'JetBrains Mono, monospace',
                 size: 9
@@ -188,7 +192,7 @@ export default function AttendanceGraph({ classId, classCode, className, records
         chartInstanceRef.current.destroy();
       }
     };
-  }, [classId, classRecords.length]);
+  }, [classId, classRecords.length, activeIsDark]);
 
   return (
     <div className="space-y-4">

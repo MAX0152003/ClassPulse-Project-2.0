@@ -3,7 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>Remix: ClassPulse</title>
+    <script>
+      // Prevent light/dark theme flicker during initial document parse
+      (function() {
+        try {
+          const cached = localStorage.getItem('cp_accessibility');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.theme === 'dark') {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
